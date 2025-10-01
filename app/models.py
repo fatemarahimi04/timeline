@@ -1,16 +1,28 @@
-from dataclasses import dataclass #hämtar dekoratorn
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 @dataclass
 class Character:
-    name: str #dataklass med ett fält, för att hålla modellen enkel och tydlig
+    name: str
+    description: str = ""
+    color: str = "#cccccc"
+    texts: List[str] = field(default_factory=list)
+    images: List[str] = field(default_factory=list)
 
 @dataclass
 class Place:
-    name: str #dataklass med ett fält, för att hålla modellen enkel och tydlig
+    name: str
+    description: str = ""
+    texts: List[str] = field(default_factory=list)
+    images: List[str] = field(default_factory=list)
 
 @dataclass
-class Event: #dataklass med tre fält
-    title: str #rubriken på händelsen
-    description: str #fri text
-    date: str = "" #datum som sträng, valfritt default tom sträng
-
+class Event:
+    title: str
+    description: str = ""
+    start_date: str = ""
+    end_date: str = ""
+    texts: List[str] = field(default_factory=list)
+    images: List[str] = field(default_factory=list)
+    characters: List[str] = field(default_factory=list)
+    places: List[str] = field(default_factory=list)
