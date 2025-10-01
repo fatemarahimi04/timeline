@@ -1,24 +1,18 @@
 {
   "characters": [
     {
-      "name": "mikael"
-    },
-    {
       "name": "fatema"
     }
   ],
   "places": [
     {
       "name": "bth"
-    },
-    {
-      "name": "karlskrona"
     }
   ],
   "events": [
     {
-      "title": "demo 1",
-      "description": "presenterar projektet",
+      "title": "demo1",
+      "description": "jnfji",
       "date": "2025-09-26"
     }
   ]

@@ -1,8 +1,8 @@
-import json
-from pathlib import Path
-from typing import Any, Dict, List
+import json #bibliotek för att konvertera objekt till json text
+from pathlib import Path #API, path gör fil och kataloghantering tydligare.
+from typing import Any, Dict, List #förklarar för läsare att vi returnerar och hanterar ordböcker med godtyckligt innehåll. 
 
-DATA_DIR = Path("data")
+DATA_DIR = Path("data") #s
 DATA_FILE = DATA_DIR / "data.json"
 
 def _ensure_dir():

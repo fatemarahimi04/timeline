@@ -1,15 +1,16 @@
-from dataclasses import dataclass
+from dataclasses import dataclass #hämtar dekoratorn
 
 @dataclass
 class Character:
-    name: str
+    name: str #dataklass med ett fält, för att hålla modellen enkel och tydlig
 
 @dataclass
 class Place:
-    name: str
+    name: str #dataklass med ett fält, för att hålla modellen enkel och tydlig
 
 @dataclass
-class Event:
-    title: str
-    description: str
-    date: str = ""
+class Event: #dataklass med tre fält
+    title: str #rubriken på händelsen
+    description: str #fri text
+    date: str = "" #datum som sträng, valfritt default tom sträng
+
