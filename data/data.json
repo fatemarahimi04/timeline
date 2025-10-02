@@ -1,19 +1,43 @@
 {
   "characters": [
     {
-      "name": "fatema"
+      "name": "fatema",
+      "description": "trött liten tjej",
+      "color": "#ff5500",
+      "texts": [
+        "hon pratar med sibil"
+      ],
+      "images": [
+        "pictures\\unnamed.jpg"
+      ]
     }
   ],
   "places": [
     {
-      "name": "bth"
+      "name": "bth",
+      "description": "skolan",
+      "texts": [
+        "där man lär sig något"
+      ],
+      "images": [
+        "pictures\\unnamed.jpg"
+      ]
     }
   ],
   "events": [
     {
       "title": "demo1",
-      "description": "jnfji",
-      "date": "2025-09-26"
+      "description": "redovisning",
+      "start_date": "2025-10-02",
+      "end_date": "2025-10-16",
+      "texts": [
+        "det var väldigt stressigt"
+      ],
+      "images": [
+        "pictures\\unnamed.jpg"
+      ],
+      "characters": [],
+      "places": []
     }
   ]
 }
