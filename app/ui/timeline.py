@@ -34,7 +34,6 @@ class TimelineGraphWidget(QGraphicsView):
         char_by_name: Dict[str, Character] = {c.name: c for c in characters}
         place_by_name: Dict[str, Place] = {p.name: p for p in places}
 
-        # Collect all dates used in events
         event_dates = sorted(set(ev.start_date for ev in events if ev.start_date))
         if not event_dates or not places:
             self.scene().clear()
@@ -55,29 +54,25 @@ class TimelineGraphWidget(QGraphicsView):
         }
 
         self.scene().clear()
-        # Draw date (x) axis
         for date, x in date_x.items():
             self.scene().addLine(x, self.TOP_MARGIN-30, x, timeline_height-20, QPen(Qt.gray, 1, Qt.DashLine))
             txt = self.scene().addText(date, self._font)
             txt.setPos(x-24, self.TOP_MARGIN-50)
-        # Draw place (y) axis
         for pname, y in place_y.items():
             self.scene().addLine(self.LEFT_MARGIN-10, y, timeline_width+self.LEFT_MARGIN-30, y, QPen(Qt.gray, 1))
             label = self.scene().addText(pname, self._font)
             label.setDefaultTextColor(Qt.darkBlue)
             label.setPos(10, y - self.EVENT_SIZE // 2)
 
-        # Draw events as colored squares
         for ev in events:
             if not ev.start_date:
                 continue
-            for place in ev.places:
+            for place in getattr(ev, 'places', []):
                 if place not in place_y or ev.start_date not in date_x:
                     continue
                 x = date_x[ev.start_date]
                 y = place_y[place]
                 rect = QRectF(x - self.EVENT_SIZE/2, y - self.EVENT_SIZE/2, self.EVENT_SIZE, self.EVENT_SIZE)
-                # If no characters, gray square. If multiple, split into vertical color bars.
                 if ev.characters:
                     n_chars = len(ev.characters)
                     for idx, charname in enumerate(ev.characters):
@@ -91,12 +86,9 @@ class TimelineGraphWidget(QGraphicsView):
                         self.scene().addRect(part_rect, QPen(Qt.black, 1), QBrush(color))
                 else:
                     self.scene().addRect(rect, QPen(Qt.black, 1), QBrush(QColor("#bbb")))
-                # Event title
                 txt = self.scene().addText(ev.title, self._font)
                 txt.setDefaultTextColor(Qt.black)
                 txt.setPos(x - self.EVENT_SIZE/2, y + self.EVENT_SIZE/2 + 2)
-
-        self.setSceneRect(0, 0, timeline_width+self.LEFT_MARGIN, timeline_height)
 
 class TimelineTab(QWidget):
     """
@@ -114,6 +106,6 @@ class TimelineTab(QWidget):
         layout = QVBoxLayout(self)
         layout.addLayout(top)
         layout.addWidget(self.graph)
-        self.graph.refresh()
+
     def refresh(self):
         self.graph.refresh()
