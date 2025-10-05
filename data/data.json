@@ -10,6 +10,17 @@
       "images": [
         "pictures\\unnamed.jpg"
       ]
+    },
+    {
+      "name": "mikael",
+      "description": "han är lärare",
+      "color": "#148fc8",
+      "texts": [
+        "våran kund"
+      ],
+      "images": [
+        "pictures\\unnamed.jpg"
+      ]
     }
   ],
   "places": [
@@ -18,6 +29,16 @@
       "description": "skolan",
       "texts": [
         "där man lär sig något"
+      ],
+      "images": [
+        "pictures\\unnamed.jpg"
+      ]
+    },
+    {
+      "name": "karlskrona",
+      "description": "universitet",
+      "texts": [
+        "där vi ska lämna examinerad"
       ],
       "images": [
         "pictures\\unnamed.jpg"
@@ -32,6 +53,20 @@
       "end_date": "2025-10-16",
       "texts": [
         "det var väldigt stressigt"
+      ],
+      "images": [
+        "pictures\\unnamed.jpg"
+      ],
+      "characters": [],
+      "places": []
+    },
+    {
+      "title": "helg",
+      "description": "gjort inget speciellt i helgen",
+      "start_date": "2025-10-03",
+      "end_date": "2025-10-05",
+      "texts": [
+        "maram kom"
       ],
       "images": [
         "pictures\\unnamed.jpg"
