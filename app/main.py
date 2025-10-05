@@ -15,14 +15,14 @@ class MainWindow(QWidget):
 
         state = load_state()
         characters = [Character(**c) for c in state.get("characters", [])]
-        place_names = [p["name"] for p in state.get("places", [])]
+        places = [Place(**p) if not isinstance(p, Place) else p for p in state.get("places", [])]
         events = [Event(**e) for e in state.get("events", [])]
 
         self.tabs = QTabWidget()
         self.chars_tab = CharactersTab(characters)
-        self.places_tab = PlacesTab([Place(**p) if not isinstance(p, Place) else p for p in state.get("places", [])])
-        self.events_tab = EventsTab(events, characters=characters, places=self.places_tab.values())
-        self.timeline_tab = TimelineTab(self.events_tab.values, self.chars_tab.values)
+        self.places_tab = PlacesTab(places)
+        self.events_tab = EventsTab(events, characters=characters, places=places)
+        self.timeline_tab = TimelineTab(self.events_tab.values, self.chars_tab.values, self.places_tab.values)
 
         self.chars_tab.data_changed.connect(self._update_events_characters)
         self.places_tab.data_changed.connect(self._update_events_places)
@@ -47,10 +47,10 @@ class MainWindow(QWidget):
             QMessageBox.critical(self, "Save failed", f"Could not save data: {e}")
         event.accept()
     def _update_events_characters(self):
-            self.events_tab.set_characters([c.name for c in self.chars_tab.values()])
+        self.events_tab.set_characters([c.name for c in self.chars_tab.values()])
 
     def _update_events_places(self):
-            self.events_tab.set_places([p.name for p in self.places_tab.values()])
+        self.events_tab.set_places([p.name for p in self.places_tab.values()])
 def main():
     app = QApplication(sys.argv)
     w = MainWindow()
