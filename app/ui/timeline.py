@@ -6,10 +6,6 @@ from PySide6.QtCore import Qt, QRectF
 from ..models import Event, Character, Place
 
 class TimelineGraphWidget(QGraphicsView):
-    """
-    Shows a graphical timeline with y=place, x=time.
-    Each event is a square in the matrix, filled with the selected characters' colors.
-    """
     ROW_HEIGHT = 60
     LEFT_MARGIN = 120
     TOP_MARGIN = 60
@@ -32,8 +28,6 @@ class TimelineGraphWidget(QGraphicsView):
         places: List[Place] = self.get_places_fn()
 
         char_by_name: Dict[str, Character] = {c.name: c for c in characters}
-        place_by_name: Dict[str, Place] = {p.name: p for p in places}
-
         event_dates = sorted(set(ev.start_date for ev in events if ev.start_date))
         if not event_dates or not places:
             self.scene().clear()
@@ -76,7 +70,7 @@ class TimelineGraphWidget(QGraphicsView):
                 if ev.characters:
                     n_chars = len(ev.characters)
                     for idx, charname in enumerate(ev.characters):
-                        color = QColor(char_by_name[charname].color) if charname in char_by_name else QColor("#aaa")
+                        color = QColor(char_by_name.get(charname, Character(name="", color="#aaa")).color)
                         part_rect = QRectF(
                             rect.left() + idx*rect.width()/n_chars,
                             rect.top(),
@@ -91,21 +85,17 @@ class TimelineGraphWidget(QGraphicsView):
                 txt.setPos(x - self.EVENT_SIZE/2, y + self.EVENT_SIZE/2 + 2)
 
 class TimelineTab(QWidget):
-    """
-    Tab containing the graphical timeline and a refresh button.
-    """
     def __init__(self, get_events_fn, get_characters_fn, get_places_fn):
         super().__init__()
         self.graph = TimelineGraphWidget(get_events_fn, get_characters_fn, get_places_fn)
         self.refresh_btn = QPushButton("Refresh")
         self.refresh_btn.clicked.connect(self.graph.refresh)
-
         top = QHBoxLayout()
         top.addStretch(1)
         top.addWidget(self.refresh_btn)
         layout = QVBoxLayout(self)
         layout.addLayout(top)
         layout.addWidget(self.graph)
-
+        self.graph.refresh()
     def refresh(self):
         self.graph.refresh()

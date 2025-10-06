@@ -2,72 +2,27 @@
   "characters": [
     {
       "name": "fatema",
-      "description": "trött liten tjej",
-      "color": "#ff5500",
-      "texts": [
-        "hon pratar med sibil"
-      ],
-      "images": [
-        "pictures\\unnamed.jpg"
-      ]
-    },
-    {
-      "name": "mikael",
-      "description": "han är lärare",
-      "color": "#148fc8",
-      "texts": [
-        "våran kund"
-      ],
-      "images": [
-        "pictures\\unnamed.jpg"
-      ]
+      "description": "en trött liten student som vill åka hem till västerås",
+      "color": "#ffff7f",
+      "texts": [],
+      "images": []
     }
   ],
   "places": [
     {
-      "name": "bth",
-      "description": "skolan",
-      "texts": [
-        "där man lär sig något"
-      ],
-      "images": [
-        "pictures\\unnamed.jpg"
-      ]
-    },
-    {
       "name": "karlskrona",
-      "description": "universitet",
-      "texts": [
-        "där vi ska lämna examinerad"
-      ],
-      "images": [
-        "pictures\\unnamed.jpg"
-      ]
+      "description": "en liten stad med mycket hav",
+      "texts": [],
+      "images": []
     }
   ],
   "events": [
     {
-      "title": "demo1",
-      "description": "redovisning",
-      "start_date": "2025-10-02",
-      "end_date": "2025-10-16",
-      "texts": [
-        "det var väldigt stressigt"
-      ],
-      "images": [
-        "pictures\\unnamed.jpg"
-      ],
-      "characters": [],
-      "places": []
-    },
-    {
       "title": "helg",
-      "description": "gjort inget speciellt i helgen",
+      "description": "en helg som andra helger",
       "start_date": "2025-10-03",
       "end_date": "2025-10-05",
-      "texts": [
-        "maram kom"
-      ],
+      "texts": [],
       "images": [
         "pictures\\unnamed.jpg"
       ],
