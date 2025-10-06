@@ -7,7 +7,7 @@ DATA_FILE = DATA_DIR / "data.json"
 
 DEFAULT_CHARACTER = {
     "description": "",
-    "color": "#cccccc",
+    "color": "#c479db",
     "texts": [],
     "images": []
 }
@@ -19,7 +19,6 @@ DEFAULT_PLACE = {
 DEFAULT_EVENT = {
     "start_date": "",
     "end_date": "",
-    "texts": [],
     "images": [],
     "characters": [],
     "places": [],
