@@ -6,12 +6,25 @@
       "color": "#55ffff",
       "texts": [],
       "images": []
+    },
+    {
+      "name": "mikael",
+      "description": "våran kund",
+      "color": "#aaff00",
+      "texts": [],
+      "images": []
     }
   ],
   "places": [
     {
       "name": "karlskrona",
       "description": "en liten stad, som e lite",
+      "texts": [],
+      "images": []
+    },
+    {
+      "name": "bth",
+      "description": "kunden finns i bth",
       "texts": [],
       "images": []
     }
@@ -30,6 +43,19 @@
       ],
       "places": [
         "karlskrona"
+      ]
+    },
+    {
+      "title": "demo2",
+      "description": "frågade om jag kan ha den onsdag",
+      "start_date": "2025-10-08",
+      "end_date": "2025-10-08",
+      "images": [],
+      "characters": [
+        "mikael"
+      ],
+      "places": [
+        "bth"
       ]
     }
   ]
