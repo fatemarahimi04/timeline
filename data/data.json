@@ -2,8 +2,8 @@
   "characters": [
     {
       "name": "fatema",
-      "description": "en trött liten student som vill åka hem till västerås",
-      "color": "#ffff7f",
+      "description": "en liten 21 årig tjej, som bor i karlskrona",
+      "color": "#55ffff",
       "texts": [],
       "images": []
     }
@@ -11,22 +11,26 @@
   "places": [
     {
       "name": "karlskrona",
-      "description": "en liten stad med mycket hav",
+      "description": "en liten stad, som e lite",
       "texts": [],
       "images": []
     }
   ],
   "events": [
     {
-      "title": "helg",
-      "description": "en helg som andra helger",
-      "start_date": "2025-10-03",
-      "end_date": "2025-10-05",
+      "title": "måndag",
+      "description": "jag sitter och pluggar i bibblan,hahha",
+      "start_date": "2025-10-09",
+      "end_date": "2025-10-13",
       "images": [
         "pictures\\unnamed.jpg"
       ],
-      "characters": [],
-      "places": []
+      "characters": [
+        "fatema"
+      ],
+      "places": [
+        "karlskrona"
+      ]
     }
   ]
 }
