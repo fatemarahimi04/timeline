@@ -1,11 +1,11 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List
 
 @dataclass
 class Character:
     name: str
     description: str = ""
-    color: str = "#71b6fb"
+    color: str = "#4fa7f5"
     texts: List[str] = field(default_factory=list)
     images: List[str] = field(default_factory=list)
 
@@ -22,7 +22,6 @@ class Event:
     description: str = ""
     start_date: str = ""
     end_date: str = ""
-    texts: List[str] = field(default_factory=list)
     images: List[str] = field(default_factory=list)
     characters: List[str] = field(default_factory=list)
     places: List[str] = field(default_factory=list)
