@@ -3,117 +3,41 @@ from dataclasses import asdict
 from typing import List
 import os
 from PySide6.QtCore import Qt, QDate, Signal
-from PySide6.QtGui import QColor, QPixmap, QIcon
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QLineEdit, QTextEdit, QPushButton, QLabel, QMessageBox, QColorDialog,
-    QFileDialog, QListView, QInputDialog, QDialog, QDialogButtonBox, QGridLayout,
-    QDateEdit
+    QFileDialog, QDateEdit, QDialog, QDialogButtonBox, QComboBox
 )
 from ..models import Character, Place, Event
 
-class CharactersTab(QWidget):
-    """
-    Characters tab: select a character and edit only name and description.
-    """
-    data_changed = Signal()
-    def __init__(self, initial_chars: List[Character]):
-        super().__init__()
-        self.chars: List[Character] = [Character(**asdict(c)) if not isinstance(c, Character) else c for c in initial_chars]
-        self.list = QListWidget()
-        self.list.setSelectionMode(QListWidget.SingleSelection)
-        for c in self.chars:
-            self.list.addItem(QListWidgetItem(c.name))
-        self.list.currentRowChanged.connect(self._on_select)
-
-        add_btn = QPushButton("Add Character")
-        del_btn = QPushButton("Delete selected")
-        add_btn.clicked.connect(self._add_char)
-        del_btn.clicked.connect(self._delete_selected)
-
+class CharacterForm(QDialog):
+    def __init__(self, character: Character = None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Character")
+        self.setModal(True)
         self.name_edit = QLineEdit()
         self.desc_edit = QTextEdit()
         self.color_btn = QPushButton()
         self.color_btn.clicked.connect(self._pick_color)
-
-        self.save_btn = QPushButton("Save Changes")
-        self.save_btn.clicked.connect(self._save_current)
-
-        form = QGridLayout()
-        form.addWidget(QLabel("Name"), 0, 0)
-        form.addWidget(self.name_edit, 0, 1)
-        form.addWidget(QLabel("Description"), 1, 0)
-        form.addWidget(self.desc_edit, 1, 1)
-        form.addWidget(QLabel("Color"), 2, 0)
-        form.addWidget(self.color_btn, 2, 1)
-        form.addWidget(self.save_btn, 3, 0, 1, 2)
-
-        left = QVBoxLayout()
-        left.addWidget(self.list)
-        left.addWidget(add_btn)
-        left.addWidget(del_btn)
-
-        main = QHBoxLayout(self)
-        main.addLayout(left, 1)
-        main.addLayout(form, 2)
-        self.list.setCurrentRow(0)
-
-    def _on_select(self, row):
-        if row < 0 or row >= len(self.chars):
-            self._clear_details()
-            return
-        c = self.chars[row]
-        self.name_edit.setText(c.name)
-        self.desc_edit.setPlainText(c.description)
-        self.color_btn.setStyleSheet(f"background:{c.color}")
-        self.color_btn.setText(c.color)
-
-    def _save_current(self):
-        row = self.list.currentRow()
-        if row < 0 or row >= len(self.chars):
-            return
-        name = self.name_edit.text().strip()
-        if not name:
-            QMessageBox.warning(self, "Missing name", "Name cannot be empty.")
-            return
-        for i, cc in enumerate(self.chars):
-            if i != row and cc.name.lower() == name.lower():
-                QMessageBox.warning(self, "Duplicate", "Another character has this name.")
-                return
-        c = self.chars[row]
-        c.name = name
-        c.description = self.desc_edit.toPlainText()
-        c.color = self.color_btn.text()
-        self.list.item(row).setText(c.name)
-        self.data_changed.emit()
-
-    def _clear_details(self):
-        self.name_edit.clear()
-        self.desc_edit.clear()
-        self.color_btn.setStyleSheet("")
-        self.color_btn.setText("")
-
-    def _add_char(self):
-        name, ok = QInputDialog.getText(self, "Add Character", "Character name?")
-        if not ok or not name.strip():
-            return
-        if any(c.name.lower() == name.strip().lower() for c in self.chars):
-            QMessageBox.warning(self, "Duplicate", "Character already exists.")
-            return
-        c = Character(name=name.strip())
-        self.chars.append(c)
-        self.list.addItem(QListWidgetItem(c.name))
-        self.list.setCurrentRow(self.list.count() - 1)
-        self.data_changed.emit()
-
-    def _delete_selected(self):
-        row = self.list.currentRow()
-        if row < 0 or row >= len(self.chars):
-            return
-        self.chars.pop(row)
-        self.list.takeItem(row)
-        self.list.setCurrentRow(0 if self.chars else -1)
-        self.data_changed.emit()
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Name:"))
+        layout.addWidget(self.name_edit)
+        layout.addWidget(QLabel("Description:"))
+        layout.addWidget(self.desc_edit)
+        layout.addWidget(QLabel("Color:"))
+        layout.addWidget(self.color_btn)
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        layout.addWidget(btns)
+        self.character = character
+        if character:
+            self.name_edit.setText(character.name)
+            self.desc_edit.setPlainText(character.description)
+            self.color_btn.setStyleSheet(f"background:{character.color}")
+            self.color_btn.setText(character.color)
+        else:
+            self.color_btn.setText("#cccccc")
 
     def _pick_color(self):
         color = QColorDialog.getColor()
@@ -121,305 +45,107 @@ class CharactersTab(QWidget):
             self.color_btn.setStyleSheet(f"background:{color.name()}")
             self.color_btn.setText(color.name())
 
-    def values(self) -> List[Character]:
-        self._save_current()
-        return self.chars
-
-class PlacesTab(QWidget):
-    """
-    Places tab: select a place and edit only name and description.
-    """
-    data_changed = Signal()
-    def __init__(self, initial_places: List[Place]):
-        super().__init__()
-        self.places: List[Place] = [Place(**asdict(p)) if not isinstance(p, Place) else p for p in initial_places]
-        self.list = QListWidget()
-        self.list.setSelectionMode(QListWidget.SingleSelection)
-        for p in self.places:
-            self.list.addItem(QListWidgetItem(p.name))
-        self.list.currentRowChanged.connect(self._on_select)
-
-        add_btn = QPushButton("Add Place")
-        del_btn = QPushButton("Delete selected")
-        add_btn.clicked.connect(self._add_place)
-        del_btn.clicked.connect(self._delete_selected)
-
-        self.name_edit = QLineEdit()
-        self.desc_edit = QTextEdit()
-
-        self.save_btn = QPushButton("Save Changes")
-        self.save_btn.clicked.connect(self._save_current)
-
-        form = QGridLayout()
-        form.addWidget(QLabel("Name"), 0, 0)
-        form.addWidget(self.name_edit, 0, 1)
-        form.addWidget(QLabel("Description"), 1, 0)
-        form.addWidget(self.desc_edit, 1, 1)
-        form.addWidget(self.save_btn, 2, 0, 1, 2)
-
-        left = QVBoxLayout()
-        left.addWidget(self.list)
-        left.addWidget(add_btn)
-        left.addWidget(del_btn)
-
-        main = QHBoxLayout(self)
-        main.addLayout(left, 1)
-        main.addLayout(form, 2)
-        self.list.setCurrentRow(0)
-
-    def _on_select(self, row):
-        if row < 0 or row >= len(self.places):
-            self._clear_details()
-            return
-        p = self.places[row]
-        self.name_edit.setText(p.name)
-        self.desc_edit.setPlainText(p.description)
-
-    def _save_current(self):
-        row = self.list.currentRow()
-        if row < 0 or row >= len(self.places):
-            return
+    def get_result(self):
         name = self.name_edit.text().strip()
         if not name:
-            QMessageBox.warning(self, "Missing name", "Name cannot be empty.")
-            return
-        for i, pp in enumerate(self.places):
-            if i != row and pp.name.lower() == name.lower():
-                QMessageBox.warning(self, "Duplicate", "Another place has this name.")
-                return
-        p = self.places[row]
-        p.name = name
-        p.description = self.desc_edit.toPlainText()
-        self.list.item(row).setText(p.name)
-        self.data_changed.emit()
+            return None
+        desc = self.desc_edit.toPlainText()
+        color = self.color_btn.text()
+        return Character(name=name, description=desc, color=color)
 
-    def _clear_details(self):
-        self.name_edit.clear()
-        self.desc_edit.clear()
+class PlaceForm(QDialog):
+    def __init__(self, place: Place = None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Place")
+        self.setModal(True)
+        self.name_edit = QLineEdit()
+        self.desc_edit = QTextEdit()
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Name:"))
+        layout.addWidget(self.name_edit)
+        layout.addWidget(QLabel("Description:"))
+        layout.addWidget(self.desc_edit)
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        layout.addWidget(btns)
+        self.place = place
+        if place:
+            self.name_edit.setText(place.name)
+            self.desc_edit.setPlainText(place.description)
 
-    def _add_place(self):
-        name, ok = QInputDialog.getText(self, "Add Place", "Place name?")
-        if not ok or not name.strip():
-            return
-        if any(p.name.lower() == name.strip().lower() for p in self.places):
-            QMessageBox.warning(self, "Duplicate", "Place already exists.")
-            return
-        p = Place(name=name.strip())
-        self.places.append(p)
-        self.list.addItem(QListWidgetItem(p.name))
-        self.list.setCurrentRow(self.list.count() - 1)
-        self.data_changed.emit()
+    def get_result(self):
+        name = self.name_edit.text().strip()
+        if not name:
+            return None
+        desc = self.desc_edit.toPlainText()
+        return Place(name=name, description=desc)
 
-    def _delete_selected(self):
-        row = self.list.currentRow()
-        if row < 0 or row >= len(self.places):
-            return
-        self.places.pop(row)
-        self.list.takeItem(row)
-        self.list.setCurrentRow(0 if self.places else -1)
-        self.data_changed.emit()
-
-    def values(self) -> List[Place]:
-        self._save_current()
-        return self.places
-
-class EventsTab(QWidget):
-    """
-    Full-featured Events tab: add/edit all fields, associate characters/places, texts, images.
-    """
-    def __init__(self, initial_events: List[Event], characters: List[Character]=None, places: List[Place]=None):
-        super().__init__()
-        self.events: List[Event] = [Event(**asdict(e)) if not isinstance(e, Event) else e for e in initial_events]
-        self.characters: List[str] = [c.name for c in (characters or [])]
-        self.places: List[str] = [p.name for p in (places or [])]
-
-        self.list = QListWidget()
-        self.list.setSelectionMode(QListWidget.SingleSelection)
-        for e in self.events:
-            self.list.addItem(QListWidgetItem(e.title))
-        self.list.currentRowChanged.connect(self._on_select)
-
-        add_btn = QPushButton("Add Event")
-        del_btn = QPushButton("Delete selected")
-        add_btn.clicked.connect(self._add_event)
-        del_btn.clicked.connect(self._delete_selected)
-
+class EventForm(QDialog):
+    def __init__(self, event: Event = None, characters: List[Character] = None, places: List[Place] = None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Event")
+        self.setModal(True)
         self.title_edit = QLineEdit()
         self.desc_edit = QTextEdit()
-        self.start_date = QDateEdit()
-        self.start_date.setCalendarPopup(True)
-        self.start_date.setDisplayFormat("yyyy-MM-dd")
-        self.end_date = QDateEdit()
-        self.end_date.setCalendarPopup(True)
-        self.end_date.setDisplayFormat("yyyy-MM-dd")
-        self.end_date.setSpecialValueText("")
-
-        self.texts_list = QListWidget()
-        self.add_text_btn = QPushButton("Add Note")
-        self.del_text_btn = QPushButton("Delete Note")
-        self.add_text_btn.clicked.connect(self._add_text)
-        self.del_text_btn.clicked.connect(self._del_text)
-
+        self.start_date_edit = QDateEdit()
+        self.start_date_edit.setCalendarPopup(True)
+        self.start_date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.end_date_edit = QDateEdit()
+        self.end_date_edit.setCalendarPopup(True)
+        self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
         self.images_list = QListWidget()
         self.add_img_btn = QPushButton("Add Image")
-        self.del_img_btn = QPushButton("Delete Image")
         self.add_img_btn.clicked.connect(self._add_img)
+        self.del_img_btn = QPushButton("Delete Image")
         self.del_img_btn.clicked.connect(self._del_img)
-
-        self.char_list = QListWidget()
-        self.char_list.setSelectionMode(QListWidget.MultiSelection)
-        self.place_list = QListWidget()
-        self.place_list.setSelectionMode(QListWidget.MultiSelection)
-
-        self.save_btn = QPushButton("Save Changes")
-        self.save_btn.clicked.connect(self._save_current)
-
-        form = QGridLayout()
-        form.addWidget(QLabel("Title"), 0, 0)
-        form.addWidget(self.title_edit, 0, 1)
-        form.addWidget(QLabel("Description"), 1, 0)
-        form.addWidget(self.desc_edit, 1, 1)
-        form.addWidget(QLabel("Start date"), 2, 0)
-        form.addWidget(self.start_date, 2, 1)
-        form.addWidget(QLabel("End date"), 3, 0)
-        form.addWidget(self.end_date, 3, 1)
-        form.addWidget(QLabel("Texts/Notes"), 4, 0)
-        form.addWidget(self.texts_list, 4, 1)
-        form.addWidget(self.add_text_btn, 5, 1)
-        form.addWidget(self.del_text_btn, 6, 1)
-        form.addWidget(QLabel("Images"), 7, 0)
-        form.addWidget(self.images_list, 7, 1)
-        form.addWidget(self.add_img_btn, 8, 1)
-        form.addWidget(self.del_img_btn, 9, 1)
-        form.addWidget(QLabel("Characters"), 10, 0)
-        form.addWidget(self.char_list, 10, 1)
-        form.addWidget(QLabel("Places"), 11, 0)
-        form.addWidget(self.place_list, 11, 1)
-        form.addWidget(self.save_btn, 12, 0, 1, 2)
-
-        left = QVBoxLayout()
-        left.addWidget(self.list)
-        left.addWidget(add_btn)
-        left.addWidget(del_btn)
-
-        main = QHBoxLayout(self)
-        main.addLayout(left, 1)
-        main.addLayout(form, 2)
-
-        self._refresh_char_place_lists()
-        self.list.setCurrentRow(0)
-
-    def _refresh_char_place_lists(self):
-        self.char_list.clear()
-        for name in self.characters:
-            item = QListWidgetItem(name)
-            self.char_list.addItem(item)
-        self.place_list.clear()
-        for name in self.places:
-            item = QListWidgetItem(name)
-            self.place_list.addItem(item)
-
-    def set_characters(self, characters: List[str]):
-        self.characters = characters
-        self._refresh_char_place_lists()
-
-    def set_places(self, places: List[str]):
-        self.places = places
-        self._refresh_char_place_lists()
-
-    def _on_select(self, row):
-        if row < 0 or row >= len(self.events):
-            self._clear_details()
-            return
-        e = self.events[row]
-        self.title_edit.setText(e.title)
-        self.desc_edit.setPlainText(e.description)
-        try:
-            if e.start_date:
-                self.start_date.setDate(QDate.fromString(e.start_date, "yyyy-MM-dd"))
-            else:
-                self.start_date.setDate(QDate.currentDate())
-            if e.end_date:
-                self.end_date.setDate(QDate.fromString(e.end_date, "yyyy-MM-dd"))
-            else:
-                self.end_date.setDate(QDate.currentDate())
-        except Exception:
-            self.start_date.setDate(QDate.currentDate())
-            self.end_date.setDate(QDate.currentDate())
-        self.texts_list.clear()
-        for t in e.texts:
-            self.texts_list.addItem(QListWidgetItem(t))
-        self.images_list.clear()
-        for img in e.images:
-            self.images_list.addItem(QListWidgetItem(img))
-        self._refresh_char_place_lists()
-        for i in range(self.char_list.count()):
-            item = self.char_list.item(i)
-            item.setSelected(item.text() in e.characters)
-        for i in range(self.place_list.count()):
-            item = self.place_list.item(i)
-            item.setSelected(item.text() in e.places)
-
-    def _save_current(self):
-        row = self.list.currentRow()
-        if row < 0 or row >= len(self.events):
-            return
-        title = self.title_edit.text().strip()
-        if not title:
-            QMessageBox.warning(self, "Missing title", "Title cannot be empty.")
-            return
-        for i, ee in enumerate(self.events):
-            if i != row and ee.title.lower() == title.lower():
-                QMessageBox.warning(self, "Duplicate", "Another event has this title.")
-                return
-        e = self.events[row]
-        e.title = title
-        e.description = self.desc_edit.toPlainText()
-        e.start_date = self.start_date.date().toString("yyyy-MM-dd")
-        e.end_date = self.end_date.date().toString("yyyy-MM-dd") if self.end_date.date() != self.start_date.date() else ""
-        e.texts = [self.texts_list.item(i).text() for i in range(self.texts_list.count())]
-        e.images = [self.images_list.item(i).text() for i in range(self.images_list.count())]
-        e.characters = [self.char_list.item(i).text() for i in range(self.char_list.count()) if self.char_list.item(i).isSelected()]
-        e.places = [self.place_list.item(i).text() for i in range(self.place_list.count()) if self.place_list.item(i).isSelected()]
-        self.list.item(row).setText(e.title)
-
-    def _clear_details(self):
-        self.title_edit.clear()
-        self.desc_edit.clear()
-        self.start_date.setDate(QDate.currentDate())
-        self.end_date.setDate(QDate.currentDate())
-        self.texts_list.clear()
-        self.images_list.clear()
-        self._refresh_char_place_lists()
-
-    def _add_event(self):
-        title, ok = QInputDialog.getText(self, "Add Event", "Event title?")
-        if not ok or not title.strip():
-            return
-        if any(e.title.lower() == title.strip().lower() for e in self.events):
-            QMessageBox.warning(self, "Duplicate", "Event already exists.")
-            return
-        e = Event(title=title.strip())
-        self.events.append(e)
-        self.list.addItem(QListWidgetItem(e.title))
-        self.list.setCurrentRow(self.list.count() - 1)
-
-    def _delete_selected(self):
-        row = self.list.currentRow()
-        if row < 0 or row >= len(self.events):
-            return
-        self.events.pop(row)
-        self.list.takeItem(row)
-        self.list.setCurrentRow(0 if self.events else -1)
-
-    def _add_text(self):
-        text, ok = QInputDialog.getMultiLineText(self, "Add Note", "Text:")
-        if ok and text.strip():
-            self.texts_list.addItem(QListWidgetItem(text.strip()))
-
-    def _del_text(self):
-        for item in self.texts_list.selectedItems():
-            self.texts_list.takeItem(self.texts_list.row(item))
+        self.char_combo = QListWidget()
+        self.char_combo.setSelectionMode(QListWidget.MultiSelection)
+        for c in (characters or []):
+            self.char_combo.addItem(c.name)
+        self.place_combo = QListWidget()
+        self.place_combo.setSelectionMode(QListWidget.MultiSelection)
+        for p in (places or []):
+            self.place_combo.addItem(p.name)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Title:"))
+        layout.addWidget(self.title_edit)
+        layout.addWidget(QLabel("Description:"))
+        layout.addWidget(self.desc_edit)
+        layout.addWidget(QLabel("Start date:"))
+        layout.addWidget(self.start_date_edit)
+        layout.addWidget(QLabel("End date:"))
+        layout.addWidget(self.end_date_edit)
+        layout.addWidget(QLabel("Images:"))
+        layout.addWidget(self.images_list)
+        hl = QHBoxLayout()
+        hl.addWidget(self.add_img_btn)
+        hl.addWidget(self.del_img_btn)
+        layout.addLayout(hl)
+        layout.addWidget(QLabel("Characters:"))
+        layout.addWidget(self.char_combo)
+        layout.addWidget(QLabel("Places:"))
+        layout.addWidget(self.place_combo)
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        layout.addWidget(btns)
+        if event:
+            self.title_edit.setText(event.title)
+            self.desc_edit.setPlainText(event.description)
+            if event.start_date:
+                self.start_date_edit.setDate(QDate.fromString(event.start_date, "yyyy-MM-dd"))
+            if event.end_date:
+                self.end_date_edit.setDate(QDate.fromString(event.end_date, "yyyy-MM-dd"))
+            for img in event.images:
+                self.images_list.addItem(img)
+            for i in range(self.char_combo.count()):
+                if event.characters and self.char_combo.item(i).text() in event.characters:
+                    self.char_combo.item(i).setSelected(True)
+            for i in range(self.place_combo.count()):
+                if event.places and self.place_combo.item(i).text() in event.places:
+                    self.place_combo.item(i).setSelected(True)
+        self.selected_images = list(event.images) if event else []
 
     def _add_img(self):
         folder = os.path.join(os.getcwd(), "pictures")
@@ -431,12 +157,213 @@ class EventsTab(QWidget):
             if not rel.startswith("pictures/") and not rel.startswith("pictures\\"):
                 QMessageBox.warning(self, "Not in pictures/", "Please only add images from the 'pictures/' folder.")
                 return
-            self.images_list.addItem(QListWidgetItem(rel))
+            self.images_list.addItem(rel)
 
     def _del_img(self):
         for item in self.images_list.selectedItems():
             self.images_list.takeItem(self.images_list.row(item))
 
+    def get_result(self):
+        title = self.title_edit.text().strip()
+        if not title:
+            return None
+        desc = self.desc_edit.toPlainText()
+        start_date = self.start_date_edit.date().toString("yyyy-MM-dd")
+        end_date = self.end_date_edit.date().toString("yyyy-MM-dd")
+        images = [self.images_list.item(i).text() for i in range(self.images_list.count())]
+        characters = [self.char_combo.item(i).text() for i in range(self.char_combo.count()) if self.char_combo.item(i).isSelected()]
+        places = [self.place_combo.item(i).text() for i in range(self.place_combo.count()) if self.place_combo.item(i).isSelected()]
+        return Event(
+            title=title,
+            description=desc,
+            start_date=start_date,
+            end_date=end_date,
+            images=images,
+            characters=characters,
+            places=places
+        )
+
+class CharactersTab(QWidget):
+    data_changed = Signal()
+    def __init__(self, initial_chars: List[Character]):
+        super().__init__()
+        self.chars: List[Character] = [Character(**asdict(c)) if not isinstance(c, Character) else c for c in initial_chars]
+        self.list = QListWidget()
+        self._refresh_list()
+        add_btn = QPushButton("Add")
+        edit_btn = QPushButton("Edit")
+        del_btn = QPushButton("Delete")
+        add_btn.clicked.connect(self._add)
+        edit_btn.clicked.connect(self._edit)
+        del_btn.clicked.connect(self._delete)
+        btnrow = QHBoxLayout()
+        btnrow.addWidget(add_btn)
+        btnrow.addWidget(edit_btn)
+        btnrow.addWidget(del_btn)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Characters:"))
+        layout.addWidget(self.list)
+        layout.addLayout(btnrow)
+
+    def _refresh_list(self):
+        self.list.clear()
+        for c in self.chars:
+            self.list.addItem(c.name)
+
+    def _add(self):
+        dlg = CharacterForm(parent=self)
+        if dlg.exec() == QDialog.Accepted:
+            char = dlg.get_result()
+            if char and not any(c.name == char.name for c in self.chars):
+                self.chars.append(char)
+                self._refresh_list()
+                self.data_changed.emit()
+
+    def _edit(self):
+        idx = self.list.currentRow()
+        if idx < 0 or idx >= len(self.chars):
+            return
+        dlg = CharacterForm(self.chars[idx], parent=self)
+        if dlg.exec() == QDialog.Accepted:
+            char = dlg.get_result()
+            if char:
+                self.chars[idx] = char
+                self._refresh_list()
+                self.data_changed.emit()
+
+    def _delete(self):
+        idx = self.list.currentRow()
+        if idx < 0 or idx >= len(self.chars):
+            return
+        self.chars.pop(idx)
+        self._refresh_list()
+        self.data_changed.emit()
+
+    def values(self) -> List[Character]:
+        return self.chars
+
+class PlacesTab(QWidget):
+    data_changed = Signal()
+    def __init__(self, initial_places: List[Place]):
+        super().__init__()
+        self.places: List[Place] = [Place(**asdict(p)) if not isinstance(p, Place) else p for p in initial_places]
+        self.list = QListWidget()
+        self._refresh_list()
+        add_btn = QPushButton("Add")
+        edit_btn = QPushButton("Edit")
+        del_btn = QPushButton("Delete")
+        add_btn.clicked.connect(self._add)
+        edit_btn.clicked.connect(self._edit)
+        del_btn.clicked.connect(self._delete)
+        btnrow = QHBoxLayout()
+        btnrow.addWidget(add_btn)
+        btnrow.addWidget(edit_btn)
+        btnrow.addWidget(del_btn)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Places:"))
+        layout.addWidget(self.list)
+        layout.addLayout(btnrow)
+
+    def _refresh_list(self):
+        self.list.clear()
+        for p in self.places:
+            self.list.addItem(p.name)
+
+    def _add(self):
+        dlg = PlaceForm(parent=self)
+        if dlg.exec() == QDialog.Accepted:
+            place = dlg.get_result()
+            if place and not any(p.name == place.name for p in self.places):
+                self.places.append(place)
+                self._refresh_list()
+                self.data_changed.emit()
+
+    def _edit(self):
+        idx = self.list.currentRow()
+        if idx < 0 or idx >= len(self.places):
+            return
+        dlg = PlaceForm(self.places[idx], parent=self)
+        if dlg.exec() == QDialog.Accepted:
+            place = dlg.get_result()
+            if place:
+                self.places[idx] = place
+                self._refresh_list()
+                self.data_changed.emit()
+
+    def _delete(self):
+        idx = self.list.currentRow()
+        if idx < 0 or idx >= len(self.places):
+            return
+        self.places.pop(idx)
+        self._refresh_list()
+        self.data_changed.emit()
+
+    def values(self) -> List[Place]:
+        return self.places
+
+class EventsTab(QWidget):
+    data_changed = Signal()
+    def __init__(self, initial_events: List[Event], characters: List[Character]=None, places: List[Place]=None):
+        super().__init__()
+        self.events: List[Event] = [Event(**asdict(e)) if not isinstance(e, Event) else e for e in initial_events]
+        self.characters: List[Character] = characters or []
+        self.places: List[Place] = places or []
+        self.list = QListWidget()
+        self._refresh_list()
+        add_btn = QPushButton("Add")
+        edit_btn = QPushButton("Edit")
+        del_btn = QPushButton("Delete")
+        add_btn.clicked.connect(self._add)
+        edit_btn.clicked.connect(self._edit)
+        del_btn.clicked.connect(self._delete)
+        btnrow = QHBoxLayout()
+        btnrow.addWidget(add_btn)
+        btnrow.addWidget(edit_btn)
+        btnrow.addWidget(del_btn)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Events:"))
+        layout.addWidget(self.list)
+        layout.addLayout(btnrow)
+
+    def _refresh_list(self):
+        self.list.clear()
+        for e in self.events:
+            self.list.addItem(e.title)
+
+    def set_characters(self, characters: List[str]):
+        self.characters = [Character(name=n) for n in characters]
+
+    def set_places(self, places: List[str]):
+        self.places = [Place(name=n) for n in places]
+
+    def _add(self):
+        dlg = EventForm(characters=self.characters, places=self.places, parent=self)
+        if dlg.exec() == QDialog.Accepted:
+            event = dlg.get_result()
+            if event and not any(e.title == event.title for e in self.events):
+                self.events.append(event)
+                self._refresh_list()
+                self.data_changed.emit()
+
+    def _edit(self):
+        idx = self.list.currentRow()
+        if idx < 0 or idx >= len(self.events):
+            return
+        dlg = EventForm(self.events[idx], characters=self.characters, places=self.places, parent=self)
+        if dlg.exec() == QDialog.Accepted:
+            event = dlg.get_result()
+            if event:
+                self.events[idx] = event
+                self._refresh_list()
+                self.data_changed.emit()
+
+    def _delete(self):
+        idx = self.list.currentRow()
+        if idx < 0 or idx >= len(self.events):
+            return
+        self.events.pop(idx)
+        self._refresh_list()
+        self.data_changed.emit()
+
     def values(self) -> List[Event]:
-        self._save_current()
         return self.events
