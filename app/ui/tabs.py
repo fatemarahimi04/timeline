@@ -37,7 +37,7 @@ class CharacterForm(QDialog):
             self.color_btn.setStyleSheet(f"background:{character.color}")
             self.color_btn.setText(character.color)
         else:
-            self.color_btn.setText("#cccccc")
+            self.color_btn.setText("#eedada")
 
     def _pick_color(self):
         color = QColorDialog.getColor()

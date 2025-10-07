@@ -23,7 +23,7 @@ class TimelineGraphWidget(QGraphicsView):
         self.ROW_HEIGHT = 90
         self.LEFT_MARGIN = 120
         self.TOP_MARGIN = 80
-        self.TIMELINE_Y_OFFSET = 40  # where the main line is drawn in each row
+        self.TIMELINE_Y_OFFSET = 40
         self.EVENT_SIZE = 36
         self.scale_factor = 1.0
         self._font = QFont()
@@ -116,7 +116,7 @@ class TimelineGraphWidget(QGraphicsView):
                 font_name = QFont(self._font)
                 font_name.setPointSize(13)
                 event_name = self.scene.addText(ev.title, font_name)
-                event_name.setDefaultTextColor(QColor("#33ff66"))
+                event_name.setDefaultTextColor(QColor("#81042e"))
                 event_name.setPos(x - self.EVENT_SIZE/2, y - self.EVENT_SIZE/2 - 32)
 
                 # Date (below title)

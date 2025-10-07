@@ -5,7 +5,7 @@ from typing import List
 class Character:
     name: str
     description: str = ""
-    color: str = "#4fa7f5"
+    color: str = "#ec6ccc"
     texts: List[str] = field(default_factory=list)
     images: List[str] = field(default_factory=list)
 

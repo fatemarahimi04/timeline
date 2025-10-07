@@ -7,7 +7,7 @@ DATA_FILE = DATA_DIR / "data.json"
 
 DEFAULT_CHARACTER = {
     "description": "",
-    "color": "#c479db",
+    "color": "#3dc2da",
     "texts": [],
     "images": []
 }
