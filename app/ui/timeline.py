@@ -16,7 +16,7 @@ class TimelineGraphWidget(QGraphicsView):
         self.get_places_fn = get_places_fn
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
-        self.setRenderHint(QPainter.Antialiasing)  # <--- FIXED HERE
+        self.setRenderHint(QPainter.Antialiasing)
 
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -46,24 +46,23 @@ class TimelineGraphWidget(QGraphicsView):
         timeline_width = max(800, n_dates * 180)
         timeline_height = self.TOP_MARGIN + n_places * self.ROW_HEIGHT + 200
 
-        date_x: Dict[str, float] = {
-            date: self.LEFT_MARGIN + i * ((timeline_width - self.LEFT_MARGIN) // max(1, n_dates-1))
-            for i, date in enumerate(event_dates)
-        }
-        place_y: Dict[str, float] = {
-            p.name: self.TOP_MARGIN + i * self.ROW_HEIGHT
-            for i, p in enumerate(places)
-        }
+        self.scene.addRect(
+            0, 0, timeline_width + self.LEFT_MARGIN, timeline_height,
+            QPen(Qt.NoPen), QBrush(QColor(245, 245, 250))
+        )
 
-        for i, (pname, y) in enumerate(place_y.items()):
+        for i, (pname, y) in enumerate(places and [(p.name, self.TOP_MARGIN + i * self.ROW_HEIGHT) for i, p in enumerate(places)]):
+            bg_color = QColor(220, 220, 235, 100) if i % 2 == 0 else QColor(255, 255, 255, 80)
             rect = QRectF(0, y - self.ROW_HEIGHT//2, timeline_width + self.LEFT_MARGIN, self.ROW_HEIGHT)
-            self.scene.addRect(rect, QPen(Qt.NoPen), QBrush(Qt.white))
+            self.scene.addRect(rect, QPen(Qt.NoPen), QBrush(bg_color))
+            self.scene.addLine(0, y + self.ROW_HEIGHT//2, timeline_width + self.LEFT_MARGIN, y + self.ROW_HEIGHT//2, QPen(QColor(210,210,220), 1))
 
-        for date, x in date_x.items():
-            self.scene.addLine(x, self.TOP_MARGIN-40, x, timeline_height-20, QPen(Qt.gray, 1, Qt.DashLine))
+        for date, x in zip(event_dates, [self.LEFT_MARGIN + i * ((timeline_width - self.LEFT_MARGIN) // max(1, n_dates-1)) for i in range(n_dates)]):
+            self.scene.addLine(x, self.TOP_MARGIN-40, x, timeline_height-20, QPen(QColor(180,180,200), 1, Qt.DashLine))
             txt = self.scene.addText(date, self._font)
             txt.setPos(x-32, self.TOP_MARGIN-60)
-        for pname, y in place_y.items():
+        for i, pname in enumerate([p.name for p in places]):
+            y = self.TOP_MARGIN + i * self.ROW_HEIGHT
             label = self.scene.addText(pname, self._font)
             label.setDefaultTextColor(Qt.black)
             label.setPos(10, y - self.EVENT_SIZE // 2)
@@ -72,10 +71,15 @@ class TimelineGraphWidget(QGraphicsView):
             if not ev.start_date:
                 continue
             for place in getattr(ev, 'places', []):
-                if place not in place_y or ev.start_date not in date_x:
+                y = None
+                try:
+                    y = self.TOP_MARGIN + [p.name for p in places].index(place) * self.ROW_HEIGHT
+                except Exception:
                     continue
-                x = date_x[ev.start_date]
-                y = place_y[place]
+                try:
+                    x = self.LEFT_MARGIN + event_dates.index(ev.start_date) * ((timeline_width - self.LEFT_MARGIN) // max(1, n_dates-1))
+                except Exception:
+                    continue
                 rect = QRectF(x - self.EVENT_SIZE/2, y - self.EVENT_SIZE/2, self.EVENT_SIZE, self.EVENT_SIZE)
                 if ev.characters:
                     n_chars = len(ev.characters)
