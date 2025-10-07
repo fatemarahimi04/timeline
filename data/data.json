@@ -31,31 +31,18 @@
   ],
   "events": [
     {
-      "title": "måndag",
-      "description": "jag sitter och pluggar i bibblan,hahha",
-      "start_date": "2025-10-06",
-      "end_date": "2025-10-07",
+      "title": "vem är jag",
+      "description": "jag är fatema, 21 år",
+      "start_date": "2004-02-04",
+      "end_date": "2025-10-08",
       "images": [
-        "pictures\\Screenshot 2025-10-07 162118.png"
+        "pictures\\0.jpg"
       ],
       "characters": [
         "fatema"
       ],
       "places": [
         "karlskrona"
-      ]
-    },
-    {
-      "title": "demo2",
-      "description": "frågade om jag kan ha den onsdag",
-      "start_date": "2025-10-07",
-      "end_date": "2025-10-08",
-      "images": [],
-      "characters": [
-        "mikael"
-      ],
-      "places": [
-        "bth"
       ]
     }
   ]
