@@ -3,7 +3,7 @@ from typing import List, Dict
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QGraphicsView, QGraphicsScene, QHBoxLayout, QPushButton
 )
-from PySide6.QtGui import QColor, QPen, QBrush, QFont, QPixmap
+from PySide6.QtGui import QColor, QPen, QBrush, QFont, QPixmap, QPainter
 from PySide6.QtCore import Qt, QRectF
 import os
 from ..models import Event, Character, Place
@@ -16,7 +16,7 @@ class TimelineGraphWidget(QGraphicsView):
         self.get_places_fn = get_places_fn
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
-        self.setRenderHint(self.RenderHint.Antialiasing)
+        self.setRenderHint(QPainter.Antialiasing)  # <--- FIXED HERE
 
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
