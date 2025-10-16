@@ -1,10 +1,10 @@
 from __future__ import annotations
 from typing import Optional
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QListWidget, QListWidgetItem,
     QHBoxLayout, QPushButton, QInputDialog, QMessageBox
 )
-from ...  import __init__ 
 from ..storage import list_projects, create_project, delete_project
 
 class ProjectDialog(QDialog):
@@ -41,6 +41,7 @@ class ProjectDialog(QDialog):
         self.list.itemDoubleClicked.connect(lambda *_: self.accept())
 
     def _reload(self):
+        self.list.clear
         self.list.clear()
         for name in list_projects():
             self.list.addItem(QListWidgetItem(name))

@@ -3,7 +3,7 @@ from dataclasses import asdict
 from PySide6.QtWidgets import QApplication, QWidget, QTabWidget, QVBoxLayout, QMessageBox
 
 from .models import Character, Place, Event
-from .storage import load_state, save_state, set_project
+from .storage import load_state, save_state, set_project, list_projects
 from .ui.tabs import CharactersTab, EventsTab, PlacesTab
 from .ui.timeline import TimelineTab
 from .ui.project_dialog import ProjectDialog
@@ -59,9 +59,10 @@ def main():
     dlg = ProjectDialog()
     if dlg.exec() != dlg.Accepted:
         sys.exit(0)
+
     name = dlg.selected_name()
     if not name:
-        projects = __import__("app.storage", fromlist=["list_projects"]).storage.list_projects()
+        projects = list_projects()
         name = projects[0] if projects else "default"
 
     set_project(name)
