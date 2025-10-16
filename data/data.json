@@ -2,51 +2,69 @@
   "characters": [
     {
       "name": "fatema",
-      "description": "en liten 21 årig tjej, som bor i karlskrona",
-      "color": "#55ffff",
+      "description": "jgshgdwhx",
+      "color": "#aa007f",
+      "texts": [],
+      "images": []
+    },
+    {
+      "name": "mikael",
+      "description": "ggasfghh",
+      "color": "#ffff7f",
       "texts": [],
       "images": []
     }
   ],
   "places": [
     {
-      "name": "karlskrona",
-      "description": "en liten stad, som e lite",
-      "texts": [],
-      "images": []
-    },
-    {
-      "name": "bth",
-      "description": "kunden finns i bth",
+      "name": "demo",
+      "description": "asdfghj",
       "texts": [],
       "images": []
     }
   ],
   "events": [
     {
-      "title": "vem är jag",
-      "description": "jag är fatema, 21 år",
-      "start_date": "2004-02-04",
-      "end_date": "2025-10-08",
-      "images": [],
+      "title": "onsdag",
+      "description": "vi har demo",
+      "start_date": "2025-10-15",
+      "end_date": "2000-01-01",
+      "images": [
+        "pictures\\Screenshot 2025-10-07 162118.png"
+      ],
       "characters": [
         "fatema"
       ],
       "places": [
-        "karlskrona"
+        "demo"
       ]
     },
     {
-      "title": "onsdag",
-      "description": "idag är det onsdag",
-      "start_date": "2025-10-08",
-      "end_date": "2025-10-08",
+      "title": "bth",
+      "description": "gfhjkjwel",
+      "start_date": "2025-10-16",
+      "end_date": "2000-01-01",
       "images": [],
       "characters": [
-        "fatema"
+        "fatema",
+        "mikael"
       ],
       "places": [
-        "bth"
+        "demo"
+      ]
+    },
+    {
+      "title": "torsdah",
+      "description": "treute",
+      "start_date": "2025-10-15",
+      "end_date": "2000-01-01",
+      "images": [],
+      "characters": [
+        "fatema",
+        "mikael"
+      ],
+      "places": [
+        "demo"
       ]
     }
   ]

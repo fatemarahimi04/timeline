@@ -148,12 +148,14 @@ class EventForm(QDialog):
         self.selected_images = list(event.images) if event else []
 
     def _add_img(self):
-        folder = os.path.join(os.getcwd(), "pictures")
-        if not os.path.isdir(folder):
-            os.makedirs(folder, exist_ok=True)
-        file, _ = QFileDialog.getOpenFileName(self, "Select Image", folder, "Images (*.png *.jpg *.jpeg *.bmp *.gif);;All Files (*)")
+        from ..storage import get_pictures_dir, get_project_dir
+        folder = str(get_pictures_dir())
+        file, _ = QFileDialog.getOpenFileName(
+            self, "Select Image", folder,
+            "Images (*.png *.jpg *.jpeg *.bmp *.gif);;All Files (*)"
+        )
         if file:
-            rel = os.path.relpath(file, os.getcwd())
+            rel = os.path.relpath(file, str(get_project_dir()))
             if not rel.startswith("pictures/") and not rel.startswith("pictures\\"):
                 QMessageBox.warning(self, "Not in pictures/", "Please only add images from the 'pictures/' folder.")
                 return

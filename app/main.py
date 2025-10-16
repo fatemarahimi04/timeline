@@ -3,17 +3,17 @@ from dataclasses import asdict
 from PySide6.QtWidgets import QApplication, QWidget, QTabWidget, QVBoxLayout, QMessageBox
 
 from .models import Character, Place, Event
-from .storage import load_state, save_state
+from .storage import load_state, save_state, set_project
 from .ui.tabs import CharactersTab, EventsTab, PlacesTab
 from .ui.timeline import TimelineTab
+from .ui.project_dialog import ProjectDialog
 
 class MainWindow(QWidget):
-    def __init__(self):
+    def __init__(self, state):
         super().__init__()
-        self.setWindowTitle("timeline – MVP with Timeline")
-        self.resize(900, 600)
+        self.setWindowTitle("timeline – Projects")
+        self.resize(1000, 680)
 
-        state = load_state()
         characters = [Character(**c) for c in state.get("characters", [])]
         places = [Place(**p) if not isinstance(p, Place) else p for p in state.get("places", [])]
         events = [Event(**e) for e in state.get("events", [])]
@@ -46,14 +46,28 @@ class MainWindow(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Save failed", f"Could not save data: {e}")
         event.accept()
+
     def _update_events_characters(self):
         self.events_tab.set_characters([c.name for c in self.chars_tab.values()])
 
     def _update_events_places(self):
         self.events_tab.set_places([p.name for p in self.places_tab.values()])
+
 def main():
     app = QApplication(sys.argv)
-    w = MainWindow()
+
+    dlg = ProjectDialog()
+    if dlg.exec() != dlg.Accepted:
+        sys.exit(0)
+    name = dlg.selected_name()
+    if not name:
+        projects = __import__("app.storage", fromlist=["list_projects"]).storage.list_projects()
+        name = projects[0] if projects else "default"
+
+    set_project(name)
+
+    state = load_state()
+    w = MainWindow(state)
     w.show()
     sys.exit(app.exec())
 
