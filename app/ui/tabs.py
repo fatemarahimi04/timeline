@@ -109,27 +109,40 @@ class EventForm(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Event")
         self.setModal(True)
+
         self.title_edit = QLineEdit()
         self.desc_edit = QTextEdit()
+
         self.start_date_edit = QDateEdit()
         self.start_date_edit.setCalendarPopup(True)
         self.start_date_edit.setDisplayFormat("yyyy-MM-dd")
+
         self.end_date_edit = QDateEdit()
         self.end_date_edit.setCalendarPopup(True)
         self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
+
+        today = QDate.currentDate()
+        self.start_date_edit.setDate(today)
+        self.end_date_edit.setDate(today)
+
+        self.start_date_edit.dateChanged.connect(self._mirror_end_date)
+
         self.images_list = QListWidget()
         self.add_img_btn = QPushButton("Add Image")
         self.add_img_btn.clicked.connect(self._add_img)
         self.del_img_btn = QPushButton("Delete Image")
         self.del_img_btn.clicked.connect(self._del_img)
+
         self.char_combo = QListWidget()
         self.char_combo.setSelectionMode(QListWidget.MultiSelection)
         for c in (characters or []):
             self.char_combo.addItem(c.name)
+
         self.place_combo = QListWidget()
         self.place_combo.setSelectionMode(QListWidget.MultiSelection)
         for p in (places or []):
             self.place_combo.addItem(p.name)
+
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("Title:"))
         layout.addWidget(self.title_edit)
@@ -141,18 +154,22 @@ class EventForm(QDialog):
         layout.addWidget(self.end_date_edit)
         layout.addWidget(QLabel("Images:"))
         layout.addWidget(self.images_list)
+
         hl = QHBoxLayout()
         hl.addWidget(self.add_img_btn)
         hl.addWidget(self.del_img_btn)
         layout.addLayout(hl)
+
         layout.addWidget(QLabel("Characters:"))
         layout.addWidget(self.char_combo)
         layout.addWidget(QLabel("Places:"))
         layout.addWidget(self.place_combo)
+
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         btns.accepted.connect(self.accept)
         btns.rejected.connect(self.reject)
         layout.addWidget(btns)
+
         if event:
             self.title_edit.setText(event.title)
             self.desc_edit.setPlainText(event.description)
@@ -168,7 +185,57 @@ class EventForm(QDialog):
             for i in range(self.place_combo.count()):
                 if event.places and self.place_combo.item(i).text() in event.places:
                     self.place_combo.item(i).setSelected(True)
+
         self.selected_images = list(event.images) if event else []
+
+    def _mirror_end_date(self, qdate: QDate):
+        """Sätter slutdatum till samma som startdatum, men kan ändras efteråt."""
+        self.end_date_edit.setDate(qdate)
+
+    def _add_img(self):
+        from ..storage import get_pictures_dir, get_project_dir
+        import shutil, os
+
+        file, _ = QFileDialog.getOpenFileName(
+            self, "Select Image", "",
+            "Images (*.png *.jpg *.jpeg *.bmp *.gif);;All Files (*)"
+        )
+        if not file:
+            return
+
+        pictures_dir = get_pictures_dir()
+        pictures_dir.mkdir(parents=True, exist_ok=True)
+        filename = os.path.basename(file)
+        dest = pictures_dir / filename
+        shutil.copy(file, dest)
+
+        rel = os.path.relpath(dest, get_project_dir())
+        self.images_list.addItem(rel)
+
+    def _del_img(self):
+        for item in self.images_list.selectedItems():
+            self.images_list.takeItem(self.images_list.row(item))
+
+    def get_result(self):
+        title = self.title_edit.text().strip()
+        if not title:
+            return None
+        desc = self.desc_edit.toPlainText()
+        start_date = self.start_date_edit.date().toString("yyyy-MM-dd")
+        end_date = self.end_date_edit.date().toString("yyyy-MM-dd")
+        images = [self.images_list.item(i).text() for i in range(self.images_list.count())]
+        characters = [self.char_combo.item(i).text() for i in range(self.char_combo.count()) if self.char_combo.item(i).isSelected()]
+        places = [self.place_combo.item(i).text() for i in range(self.place_combo.count()) if self.place_combo.item(i).isSelected()]
+        return Event(
+            title=title,
+            description=desc,
+            start_date=start_date,
+            end_date=end_date,
+            images=images,
+            characters=characters,
+            places=places
+        )
+
 
     def _add_img(self):
         from ..storage import get_pictures_dir, get_project_dir
