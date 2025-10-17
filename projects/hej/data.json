@@ -1,0 +1,34 @@
+{
+  "characters": [
+    {
+      "name": "fofo",
+      "description": "en tjej",
+      "color": "#7b9eff",
+      "texts": [],
+      "images": []
+    }
+  ],
+  "places": [
+    {
+      "name": "skolan",
+      "description": "fofo är i skolan",
+      "texts": [],
+      "images": []
+    }
+  ],
+  "events": [
+    {
+      "title": "fredag",
+      "description": "idag är fredag",
+      "start_date": "2025-10-17",
+      "end_date": "2025-10-24",
+      "images": [],
+      "characters": [
+        "fofo"
+      ],
+      "places": [
+        "skolan"
+      ]
+    }
+  ]
+}

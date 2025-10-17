@@ -1,6 +1,6 @@
 import sys
 from dataclasses import asdict
-from PySide6.QtWidgets import QApplication, QWidget, QTabWidget, QVBoxLayout, QMessageBox
+from PySide6.QtWidgets import QApplication, QWidget, QTabWidget, QVBoxLayout, QMessageBox, QDialog
 
 from .models import Character, Place, Event
 from .storage import load_state, save_state, set_project, list_projects
@@ -57,7 +57,7 @@ def main():
     app = QApplication(sys.argv)
 
     dlg = ProjectDialog()
-    if dlg.exec() != dlg.Accepted:
+    if dlg.exec() != QDialog.Accepted:
         sys.exit(0)
 
     name = dlg.selected_name()
