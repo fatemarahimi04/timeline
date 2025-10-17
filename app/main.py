@@ -1,6 +1,8 @@
 import sys
 from dataclasses import asdict
 from PySide6.QtWidgets import QApplication, QWidget, QTabWidget, QVBoxLayout, QMessageBox, QDialog
+from PySide6.QtGui import QShortcut, QKeySequence
+
 
 from .models import Character, Place, Event
 from .storage import load_state, save_state, set_project, list_projects
@@ -27,6 +29,11 @@ class MainWindow(QWidget):
         self.chars_tab.data_changed.connect(self._update_events_characters)
         self.places_tab.data_changed.connect(self._update_events_places)
 
+        self.events_tab.data_changed.connect(self._save_now)
+        self.chars_tab.data_changed.connect(self._save_now)
+        self.places_tab.data_changed.connect(self._save_now)
+        self.events_tab.data_changed.connect(self.timeline_tab.refresh)
+        
         self.tabs.addTab(self.chars_tab, "Characters")
         self.tabs.addTab(self.places_tab, "Places")
         self.tabs.addTab(self.events_tab, "Events")
@@ -49,9 +56,23 @@ class MainWindow(QWidget):
 
     def _update_events_characters(self):
         self.events_tab.set_characters([c.name for c in self.chars_tab.values()])
+        self.timeline_tab.refresh()
 
     def _update_events_places(self):
         self.events_tab.set_places([p.name for p in self.places_tab.values()])
+        self.timeline_tab.refresh()
+
+    def _save_now(self):
+        state = {
+            "characters": [asdict(c) for c in self.chars_tab.values()],
+            "places": [asdict(p) for p in self.places_tab.values()],
+            "events": [asdict(e) for e in self.events_tab.values()],
+        }
+        try:
+            save_state(state)
+        except Exception as e:
+            QMessageBox.critical(self, "Save failed", f"Could not save data: {e}")
+
 
 def main():
     app = QApplication(sys.argv)

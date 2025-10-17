@@ -22,7 +22,9 @@
       "description": "idag är fredag",
       "start_date": "2025-10-17",
       "end_date": "2025-10-24",
-      "images": [],
+      "images": [
+        "pictures\\0.jpg"
+      ],
       "characters": [
         "fofo"
       ],
