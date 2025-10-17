@@ -35,15 +35,38 @@ class CharacterForm(QDialog):
             self.name_edit.setText(character.name)
             self.desc_edit.setPlainText(character.description)
             self.color_btn.setStyleSheet(f"background:{character.color}")
-            self.color_btn.setText(character.color)
-        else:
-            self.color_btn.setText("#eedada")
-
+            self.color_btn.setText(character.color if character else "#ffc0cb")
+        
     def _pick_color(self):
-        color = QColorDialog.getColor()
-        if color.isValid():
-            self.color_btn.setStyleSheet(f"background:{color.name()}")
-            self.color_btn.setText(color.name())
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QPushButton, QHBoxLayout
+
+        colors = [
+            ("Baby Pink", "#ffc0cb"),
+            ("Light Blue", "#add8e6"),
+            ("Light Green", "#90ee90"),
+            ("Red", "#ff6b6b"),
+            ("Turquoise", "#40e0d0"),
+            ("Butter Yellow", "#fff8b5"),
+            ("Light Brown", "#d2b48c"),
+        ]
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Choose Character Color")
+        layout = QVBoxLayout(dialog)
+
+        for name, hex_code in colors:
+            btn = QPushButton(name)
+            btn.setStyleSheet(f"background-color: {hex_code}; border: 1px solid #555;")
+            btn.clicked.connect(lambda _, c=hex_code: self._set_color_and_close(dialog, c))
+            layout.addWidget(btn)
+
+        dialog.exec()
+
+    def _set_color_and_close(self, dialog, color):
+        """Hjälpfunktion: uppdaterar knappfärg och stänger fönstret."""
+        self.color_btn.setStyleSheet(f"background:{color}")
+        self.color_btn.setText(color)
+        dialog.accept()
 
     def get_result(self):
         name = self.name_edit.text().strip()
