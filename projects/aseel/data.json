@@ -6,12 +6,38 @@
       "color": "#40e0d0",
       "texts": [],
       "images": []
+    },
+    {
+      "name": "faato",
+      "description": "",
+      "color": "#d2b48c",
+      "texts": [],
+      "images": []
+    },
+    {
+      "name": "hon",
+      "description": "vet inte vem",
+      "color": "#ff6b6b",
+      "texts": [],
+      "images": []
     }
   ],
   "places": [
     {
       "name": "alby",
       "description": "asooli bor i alby",
+      "texts": [],
+      "images": []
+    },
+    {
+      "name": "västerås",
+      "description": "mitt hemmaplan",
+      "texts": [],
+      "images": []
+    },
+    {
+      "name": "bth",
+      "description": "våran skola",
       "texts": [],
       "images": []
     }
@@ -30,6 +56,49 @@
       ],
       "places": [
         "alby"
+      ]
+    },
+    {
+      "title": "testar proj",
+      "description": "jag sysslar med den fortfarande",
+      "start_date": "2025-09-08",
+      "end_date": "2025-10-20",
+      "images": [
+        "pictures\\Screenshot 2025-10-07 162118.png"
+      ],
+      "characters": [
+        "faato"
+      ],
+      "places": [
+        "västerås"
+      ]
+    },
+    {
+      "title": "demoo",
+      "description": "vi har snart demo",
+      "start_date": "2025-10-15",
+      "end_date": "2025-10-24",
+      "images": [],
+      "characters": [
+        "faato"
+      ],
+      "places": [
+        "västerås"
+      ]
+    },
+    {
+      "title": "mer event",
+      "description": "det va fest nu",
+      "start_date": "2025-10-11",
+      "end_date": "2025-10-12",
+      "images": [
+        "pictures\\0.jpg"
+      ],
+      "characters": [
+        "hon"
+      ],
+      "places": [
+        "bth"
       ]
     }
   ]

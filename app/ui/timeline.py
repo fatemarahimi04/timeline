@@ -3,10 +3,10 @@ from typing import List, Dict, Callable, Optional
 from datetime import datetime
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QGraphicsView, QGraphicsScene, QHBoxLayout, QPushButton,
-    QListWidget, QListWidgetItem, QLabel, QDateEdit
+    QListWidget, QListWidgetItem, QLabel, QDateEdit, QCheckBox
 )
 from PySide6.QtGui import QColor, QPen, QBrush, QFont, QPixmap, QPainter
-from PySide6.QtCore import Qt, QRectF, QDate, QUrl, QPointF
+from PySide6.QtCore import Qt, QRectF, QDate, QUrl, QPointF, QSignalBlocker
 import os
 
 from ..models import Event, Character, Place
@@ -191,6 +191,9 @@ class TimelineTab(QWidget):
         self.clear_btn = QPushButton("Clear")
         self.zoomin_btn = QPushButton("+")
         self.zoomout_btn = QPushButton("-")
+        self.auto_dates = QCheckBox("Auto dates")
+        self.auto_dates.setChecked(True)
+
 
         self._get_events_raw = get_events_fn
         self._get_characters = get_characters_fn
@@ -214,6 +217,7 @@ class TimelineTab(QWidget):
         btns = QHBoxLayout()
         btns.addWidget(self.apply_btn)
         btns.addWidget(self.clear_btn)
+        btns.addWidget(self.auto_dates)
         btns.addStretch(1)
         btns.addWidget(self.zoomin_btn)
         btns.addWidget(self.zoomout_btn)
@@ -227,6 +231,9 @@ class TimelineTab(QWidget):
         self.clear_btn.clicked.connect(self._clear_filters)
         self.zoomin_btn.clicked.connect(self.graph.zoom_in)
         self.zoomout_btn.clicked.connect(self.graph.zoom_out)
+        self.char_filter.itemSelectionChanged.connect(self._maybe_auto_dates)
+        self.place_filter.itemSelectionChanged.connect(self._maybe_auto_dates)
+        
 
         layout = QVBoxLayout(self)
         layout.addLayout(top)
@@ -238,25 +245,71 @@ class TimelineTab(QWidget):
 
 
     def _populate_filters(self):
-        self.char_filter.clear()
-        for c in self._get_characters():
-            self.char_filter.addItem(QListWidgetItem(c.name))
+        with QSignalBlocker(self.char_filter):
+            self.char_filter.clear()
+            for c in self._get_characters():
+                self.char_filter.addItem(QListWidgetItem(c.name))
 
-        self.place_filter.clear()
-        for p in self._get_places():
-            self.place_filter.addItem(QListWidgetItem(p.name))
+        with QSignalBlocker(self.place_filter):
+            self.place_filter.clear()
+            for p in self._get_places():
+                self.place_filter.addItem(QListWidgetItem(p.name))
+
 
     def _init_date_defaults(self):
         dates = [_parse_date(e.start_date) for e in self._get_events_raw() if e.start_date]
         dates = [d for d in dates if d]
         if not dates:
             today = QDate.currentDate()
-            self.date_from.setDate(today)
-            self.date_to.setDate(today)
+            with QSignalBlocker(self.date_from), QSignalBlocker(self.date_to):
+                self.date_from.setDate(today)
+                self.date_to.setDate(today)
             return
         dmin, dmax = min(dates), max(dates)
-        self.date_from.setDate(QDate.fromString(dmin.strftime("%Y-%m-%d"), "yyyy-MM-dd"))
-        self.date_to.setDate(QDate.fromString(dmax.strftime("%Y-%m-%d"), "yyyy-MM-dd"))
+        with QSignalBlocker(self.date_from), QSignalBlocker(self.date_to):
+            self.date_from.setDate(QDate.fromString(dmin.strftime("%Y-%m-%d"), "yyyy-MM-dd"))
+            self.date_to.setDate(QDate.fromString(dmax.strftime("%Y-%m-%d"), "yyyy-MM-dd"))
+
+    def _maybe_auto_dates(self):
+        if not self.auto_dates.isChecked():
+            return
+
+        events = self._get_events_raw()
+        sel_chars = set(self._selected_chars())
+        sel_places = set(self._selected_places())
+
+        def char_ok(ev: Event) -> bool:
+            return True if not sel_chars else bool(set(ev.characters) & sel_chars)
+
+        def place_ok(ev: Event) -> bool:
+            return True if not sel_places else bool(set(ev.places) & sel_places)
+
+        from datetime import datetime
+        dates: list[datetime] = []
+        for ev in events:
+            if not ev.start_date:
+                continue
+            if char_ok(ev) and place_ok(ev):
+                d = _parse_date(ev.start_date)
+                if d:
+                    dates.append(d)
+
+        if not dates:
+            today = QDate.currentDate()
+            with QSignalBlocker(self.date_from), QSignalBlocker(self.date_to):
+                self.date_from.setDate(today)
+                self.date_to.setDate(today)
+            self.graph.refresh()
+            return
+
+        dmin, dmax = min(dates), max(dates)
+        with QSignalBlocker(self.date_from), QSignalBlocker(self.date_to):
+            self.date_from.setDate(QDate.fromString(dmin.strftime("%Y-%m-%d"), "yyyy-MM-dd"))
+            self.date_to.setDate(QDate.fromString(dmax.strftime("%Y-%m-%d"), "yyyy-MM-dd"))
+
+        self.graph.refresh()
+
+
 
     def _selected_chars(self) -> List[str]:
         return [it.text() for it in self.char_filter.selectedItems()]
@@ -270,8 +323,8 @@ class TimelineTab(QWidget):
         s = _parse_date(ev.start_date)
         if not s:
             return False
-        f = _parse_date(_date_str(self.date_from))
-        t = _parse_date(_date_str(self.date_to))
+        f = _parse_date(_date_str(self.date_from.date()))
+        t = _parse_date(_date_str(self.date_to.date()))
         if f and s < f:
             return False
         if t and s > t:
@@ -301,7 +354,10 @@ class TimelineTab(QWidget):
     def _clear_filters(self):
         self.char_filter.clearSelection()
         self.place_filter.clearSelection()
-        self._init_date_defaults()
+        if self.auto_dates.isChecked():
+            self._init_date_defaults()
+        else:
+            self._init_date_defaults()
         self.refresh()
 
     def refresh(self):
