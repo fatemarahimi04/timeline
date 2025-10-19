@@ -115,3 +115,19 @@ def save_state(state: Dict[str, List[Dict[str, Any]]]) -> None:
     d = _data_dir()
     d.mkdir(parents=True, exist_ok=True)
     _data_file().write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+
+def get_current_project_name() -> str:
+    return CURRENT_PROJECT_NAME or "default"
+
+def rename_project(old_name: str, new_name: str) -> None:
+    """Byt namn på projektmappen. Fel om mål finns redan."""
+    old_dir = _project_dir(old_name)
+    new_dir = _project_dir(new_name)
+    if not old_dir.exists():
+        raise FileNotFoundError(f"Project '{old_name}' does not exist")
+    if new_dir.exists():
+        raise FileExistsError(f"Project '{new_name}' already exists")
+    old_dir.rename(new_dir)
+    global CURRENT_PROJECT_NAME
+    if CURRENT_PROJECT_NAME == old_name:
+        CURRENT_PROJECT_NAME = new_name

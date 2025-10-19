@@ -1,0 +1,36 @@
+{
+  "characters": [
+    {
+      "name": "asooli",
+      "description": "fatemas kille",
+      "color": "#40e0d0",
+      "texts": [],
+      "images": []
+    }
+  ],
+  "places": [
+    {
+      "name": "alby",
+      "description": "asooli bor i alby",
+      "texts": [],
+      "images": []
+    }
+  ],
+  "events": [
+    {
+      "title": "spela spel",
+      "description": "asooli ska spela spel idag",
+      "start_date": "2025-10-19",
+      "end_date": "2025-10-20",
+      "images": [
+        "pictures\\0.jpg"
+      ],
+      "characters": [
+        "asooli"
+      ],
+      "places": [
+        "alby"
+      ]
+    }
+  ]
+}
