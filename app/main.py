@@ -195,3 +195,42 @@ class MainWindow(QWidget):
     def _project_open_folder(self):
         folder = get_project_dir()
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
+def main():
+    app = QApplication(sys.argv)
+
+    projects = list_projects()
+    if not projects:
+        create_project("default")
+        set_project("default")
+        state = load_state()
+        w = MainWindow(state)
+        w.setWindowTitle("timeline – default")
+        w.show()
+        sys.exit(app.exec())
+
+    dlg = ProjectDialog()
+    try:
+        dlg.raise_()
+        dlg.activateWindow()
+    except Exception:
+        pass
+
+    result = dlg.exec()
+
+    if result == QDialog.Accepted and dlg.selected_name():
+        name = dlg.selected_name()
+    else:
+        name = projects[0]
+
+    set_project(name)
+
+    state = load_state()
+    w = MainWindow(state)
+    w.setWindowTitle(f"timeline – {name}")
+    w.show()
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
