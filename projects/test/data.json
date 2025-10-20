@@ -1,0 +1,64 @@
+{
+  "characters": [
+    {
+      "name": "fatema",
+      "description": "det är jag",
+      "color": "#ffc0cb",
+      "texts": [],
+      "images": []
+    },
+    {
+      "name": "aseel",
+      "description": "min kille",
+      "color": "#add8e6",
+      "texts": [],
+      "images": []
+    }
+  ],
+  "places": [
+    {
+      "name": "skolan",
+      "description": "sitter i skolan nu",
+      "texts": [],
+      "images": []
+    },
+    {
+      "name": "alby",
+      "description": "han är i alby",
+      "texts": [],
+      "images": []
+    }
+  ],
+  "events": [
+    {
+      "title": "pluggar",
+      "description": "jag pluggar nu",
+      "start_date": "2025-10-20",
+      "end_date": "2025-10-24",
+      "images": [
+        "pictures\\0.jpg"
+      ],
+      "characters": [
+        "fatema"
+      ],
+      "places": [
+        "skolan"
+      ]
+    },
+    {
+      "title": "jobbar",
+      "description": "aseel jobbar nu",
+      "start_date": "2025-10-13",
+      "end_date": "2025-10-24",
+      "images": [
+        "pictures\\Screenshot 2025-10-07 162118.png"
+      ],
+      "characters": [
+        "aseel"
+      ],
+      "places": [
+        "alby"
+      ]
+    }
+  ]
+}

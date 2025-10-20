@@ -223,10 +223,11 @@ class PrettyTimelineView(QGraphicsView):
                         _add_rounded_rect(self.scene, frame, 8, QPen(QColor(0,0,0,30)), QBrush(QColor(250,250,250)))
                         pix = QPixmap(imgp)
                         if not pix.isNull():
-                            # fit image inside inner area
+                            # fit image inside inner area (use KeepAspectRatio to avoid overflow)
                             inner = frame.adjusted(4, 4, -4, -4)
-                            pix = pix.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                            pix = pix.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatio, Qt.SmoothTransformation)
                             pm_item = self.scene.addPixmap(pix)
+                            # center image inside inner if aspect ratio left space
                             pm_item.setPos(inner.left(), inner.top())
                             pm_item.setZValue(12)  # above card, under text
                         # move text start to right of frame
@@ -240,9 +241,11 @@ class PrettyTimelineView(QGraphicsView):
                 if text_width < 10:
                     text_width = 10
 
-                # Ensure text background does not overlap thumbnail (extra safety)
+                # Ensure text background does not overlap thumbnail (strict reservation)
                 if frame:
-                    text_bg_left = max(text_left - 6, frame.right() + 6)
+                    # reserve fixed margin so text_bg never overlaps thumbnail
+                    reserved_left = rect.left() + EVENT_PADDING + thumb_size + 12
+                    text_bg_left = max(text_left - 6, reserved_left)
                 else:
                     text_bg_left = text_left - 6
 
