@@ -1,16 +1,50 @@
 from __future__ import annotations
-from typing import List, Dict, Callable, Optional
-from datetime import datetime
+from typing import List, Dict, Optional
+from datetime import datetime, timedelta
+import os
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QGraphicsView, QGraphicsScene, QHBoxLayout, QPushButton,
-    QListWidget, QListWidgetItem, QLabel, QDateEdit, QCheckBox
+    QListWidget, QListWidgetItem, QLabel, QDateEdit, QCheckBox, QSplitter
 )
-from PySide6.QtGui import QColor, QPen, QBrush, QFont, QPixmap, QPainter
-from PySide6.QtCore import Qt, QRectF, QDate, QUrl, QPointF, QSignalBlocker
-import os
+from PySide6.QtGui import QColor, QPen, QBrush, QFont, QPixmap, QPainterPath, QPainter
+from PySide6.QtCore import Qt, QRectF, QDate, QSignalBlocker, QSize
 
 from ..models import Event, Character, Place
 
+# ---- styling / layout ----
+ROW_H           = 100
+LEFT_MARGIN     = 180
+TOP_MARGIN      = 100
+EVENT_W         = 280
+EVENT_H         = 96
+EVENT_RADIUS    = 12
+EVENT_PADDING   = 12
+TICK_EVERY_DAYS = 7
+X_STEP_MIN      = 210
+
+BG_COLOR        = QColor("#F7F8FB")
+PANEL_COLOR     = QColor("#FFFFFF")        # panelen där timelinen ritas
+PANEL_BORDER    = QColor(220, 224, 236)
+AXIS_COLOR      = QColor(190, 195, 210)
+TIMELINE_COLOR  = QColor(120, 150, 210)
+
+# Hög kontrast och dyslexi-vänligt
+TITLE_COLOR     = QColor("#1F2937")
+DATE_COLOR      = QColor("#0F766E")
+DESC_COLOR      = QColor("#374151")
+CARD_BORDER     = QColor(90, 70, 50, 180)
+SHADOW_COLOR    = QColor(0, 0, 0, 55)
+CHIP_TEXT       = QColor(35, 35, 35)
+
+PLACE_PILL_BG   = QColor(255, 255, 255, 210)
+PLACE_PILL_STROKE = QColor(210, 210, 220)
+
+# ---- helpers ----
+def _add_rounded_rect(scene: QGraphicsScene, rect: QRectF, radius: float, pen: QPen, brush: QBrush):
+    path = QPainterPath()
+    path.addRoundedRect(rect, radius, radius)
+    return scene.addPath(path, pen, brush)
 
 def _parse_date(s: str) -> Optional[datetime]:
     s = (s or "").strip()
@@ -21,146 +55,216 @@ def _parse_date(s: str) -> Optional[datetime]:
     except ValueError:
         return None
 
-def _date_str(d: QDate) -> str:
-    if not d.isValid():
+def _elide(text: str, max_chars: int) -> str:
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1] + "…"
+
+def _elide_to_width(text: str, px_width: int, approx_char_px: int = 7) -> str:
+    if px_width <= 0:
         return ""
-    return d.toString("yyyy-MM-dd")
+    max_chars = max(1, px_width // approx_char_px)
+    return _elide(text, max_chars)
 
+def _first_existing_image(paths: List[str]) -> Optional[str]:
+    for p in paths or []:
+        if not os.path.isabs(p):
+            p = os.path.join(os.getcwd(), p)
+        if os.path.exists(p):
+            return p
+    return None
 
-
-class TimelineGraphWidget(QGraphicsView):
-    def __init__(self, get_events_fn: Callable[[], List[Event]], get_characters_fn, get_places_fn, parent=None):
+# ---- view ----
+class PrettyTimelineView(QGraphicsView):
+    def __init__(self, get_events_fn, get_characters_fn, get_places_fn, parent=None):
         super().__init__(parent)
         self.get_events_fn = get_events_fn
         self.get_characters_fn = get_characters_fn
         self.get_places_fn = get_places_fn
+
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
-        self.setRenderHint(QPainter.Antialiasing)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+        self.setRenderHint(QPainter.Antialiasing, True)
         self.setDragMode(QGraphicsView.ScrollHandDrag)
-        self.ROW_HEIGHT = 90
-        self.LEFT_MARGIN = 120
-        self.TOP_MARGIN = 80
-        self.TIMELINE_Y_OFFSET = 40
-        self.EVENT_SIZE = 36
+        self.setBackgroundBrush(QBrush(BG_COLOR))  # fyll hela view med bakgrund
         self.scale_factor = 1.0
-        self._font = QFont()
+
+        self._font = QFont("Segoe UI")
         self._font.setPointSize(10)
+
+    def minimumSizeHint(self) -> QSize:
+        # gör så att view gärna tar plats
+        return QSize(400, 300)
 
     def refresh(self):
         self.scene.clear()
         events: List[Event] = self.get_events_fn()
         characters: List[Character] = self.get_characters_fn()
         places: List[Place] = self.get_places_fn()
+
         char_by_name: Dict[str, Character] = {c.name: c for c in characters}
-        event_dates = sorted(set(ev.start_date for ev in events if ev.start_date))
-        if not event_dates or not places:
-            self.setSceneRect(0, 0, 800, 400)
+        dates = sorted({_parse_date(e.start_date) for e in events if e.start_date})
+        dates = [d for d in dates if d]
+
+        # säkerställ att scenen alltid är minst lika stor som viewn
+        vp_w = max(1000, self.viewport().width())
+        vp_h = max(600,  self.viewport().height())
+
+        if not places or not dates:
+            self.scene.setSceneRect(0, 0, vp_w, vp_h)
+            # panel
+            panel_rect = QRectF(20, 20, vp_w - 40, vp_h - 40)
+            _add_rounded_rect(self.scene, panel_rect, 16, QPen(PANEL_BORDER), QBrush(PANEL_COLOR))
+            self.scene.addText("No data to display").setPos(LEFT_MARGIN, TOP_MARGIN)
             return
 
-        n_dates = len(event_dates)
-        n_places = len(places)
-        timeline_width = max(800, n_dates * 190)
-        timeline_height = self.TOP_MARGIN + n_places * self.ROW_HEIGHT + 120
+        dmin, dmax = min(dates), max(dates)
+        # paddning och klipp så att första/ sista tick hamnar innanför panel
+        dmin = dmin - timedelta(days=1)
+        dmax = dmax + timedelta(days=1)
 
-        date_x: Dict[str, float] = {
-            date: self.LEFT_MARGIN + i * ((timeline_width - self.LEFT_MARGIN) // max(1, n_dates - 1))
-            for i, date in enumerate(event_dates)
-        }
-        place_y: Dict[str, float] = {
-            p.name: self.TOP_MARGIN + i * self.ROW_HEIGHT
-            for i, p in enumerate(places)
-        }
+        step_px = max(X_STEP_MIN, 140)
 
-        self.scene.addRect(
-            0, 0, timeline_width + self.LEFT_MARGIN, timeline_height,
-            QPen(Qt.NoPen), QBrush(QColor(245, 245, 250))
-        )
+        def x_for(dt: datetime) -> float:
+            days = (dt - dmin).days
+            return LEFT_MARGIN + days * step_px / TICK_EVERY_DAYS
 
-        for pname, y in place_y.items():
-            line_y = y + self.TIMELINE_Y_OFFSET
-            self.scene.addLine(
-                self.LEFT_MARGIN - 20, line_y,
-                timeline_width + self.LEFT_MARGIN - 20, line_y,
-                QPen(QColor(100, 140, 200), 3)
-            )
-            label = self.scene.addText(pname, self._font)
-            label.setDefaultTextColor(Qt.black)
-            label.setPos(10, line_y - 18)
+        content_w = x_for(dmax) + 220
+        content_h = TOP_MARGIN + len(places) * ROW_H + 140
+        scene_w = max(content_w + 40, vp_w)
+        scene_h = max(content_h + 40, vp_h)
 
-        for date, x in date_x.items():
-            self.scene.addLine(x, self.TOP_MARGIN - 40, x, timeline_height - 20, QPen(QColor(190, 190, 210), 1, Qt.DashLine))
-            txt = self.scene.addText(date, self._font)
-            txt.setDefaultTextColor(QColor(120, 120, 120))
-            txt.setPos(x - 34, self.TOP_MARGIN - 65)
+        self.scene.setSceneRect(0, 0, scene_w, scene_h)
 
+        # panel som täcker hela ritytan
+        panel_rect = QRectF(20, 20, scene_w - 40, scene_h - 40)
+        _add_rounded_rect(self.scene, panel_rect, 16, QPen(PANEL_BORDER), QBrush(PANEL_COLOR))
+
+        # linjer per plats + etikett (med pill-bakgrund)
+        for i, p in enumerate(places):
+            y = TOP_MARGIN + i * ROW_H
+            line_y = y + ROW_H / 2
+
+            # tidslinje
+            self.scene.addLine(LEFT_MARGIN - 10, line_y, scene_w - 60, line_y, QPen(TIMELINE_COLOR, 3))
+
+            # pill-bakgrund
+            pill_rect = QRectF(20, line_y - 16, LEFT_MARGIN - 40, 28)
+            _add_rounded_rect(self.scene, pill_rect, 12, QPen(PLACE_PILL_STROKE), QBrush(PLACE_PILL_BG))
+
+            # platsnamn
+            name_item = self.scene.addText(_elide(p.name, 18), self._font)
+            name_item.setDefaultTextColor(Qt.black)
+            name_item.setPos(pill_rect.left() + 10, pill_rect.top() + 4)
+
+        # vertikala tickar + datum
+        # justera till närmsta veckostart, men klipp inom [dmin, dmax]
+        tick = dmin - timedelta(days=(dmin.weekday() % 7))
+        while tick <= dmax:
+            x = x_for(tick)
+            if x >= LEFT_MARGIN - 5:  # rita bara innanför panelen
+                self.scene.addLine(x, TOP_MARGIN - 30, x, scene_h - 60, QPen(AXIS_COLOR, 1, Qt.DashLine))
+                txt = self.scene.addText(tick.strftime("%Y-%m-%d"), self._font)
+                txt.setDefaultTextColor(QColor(120, 120, 130))
+                txt.setPos(x - 35, TOP_MARGIN - 55)
+            tick += timedelta(days=TICK_EVERY_DAYS)
+
+        # events som kort
         for ev in events:
-            if not ev.start_date:
+            sdt = _parse_date(ev.start_date)
+            if not sdt:
                 continue
-            for place in getattr(ev, 'places', []):
-                if place not in place_y or ev.start_date not in date_x:
+            for place_name in getattr(ev, "places", []) or [""]:
+                row_idx = next((i for i, pl in enumerate(places) if pl.name == place_name), None)
+                if row_idx is None:
                     continue
-                x = date_x[ev.start_date]
-                y = place_y[place] + self.TIMELINE_Y_OFFSET
-                rect = QRectF(x - self.EVENT_SIZE / 2, y - self.EVENT_SIZE / 2, self.EVENT_SIZE, self.EVENT_SIZE)
 
-                self.scene.addLine(x, y, x, y - 24, QPen(QColor(120, 160, 120, 180), 2))
+                x = x_for(sdt)
+                y_center = TOP_MARGIN + row_idx * ROW_H + ROW_H / 2
+                rect = QRectF(x - EVENT_W / 2, y_center - EVENT_H / 2, EVENT_W, EVENT_H)
 
+                # skugga (Z: 5)
+                shadow = QRectF(rect); shadow.translate(0, 4)
+                sh_item = _add_rounded_rect(self.scene, shadow, EVENT_RADIUS, QPen(Qt.NoPen), QBrush(SHADOW_COLOR))
+                sh_item.setZValue(5)
+
+                # bakgrundsfärg (helt opak) + ram (Z: 10)
                 if ev.characters:
-                    n_chars = len(ev.characters)
-                    for idx, charname in enumerate(ev.characters):
-                        color_hex = char_by_name.get(charname, Character(name="", color="#aaa")).color
-                        color = QColor(color_hex)
-                        color.setAlpha(120)
-                        part_rect = QRectF(
-                            rect.left() + idx * rect.width() / n_chars,
-                            rect.top(),
-                            rect.width() / n_chars,
-                            rect.height()
-                        )
-                        self.scene.addRect(part_rect, QPen(Qt.black, 1), QBrush(color))
+                    base_col = QColor(char_by_name.get(ev.characters[0], Character(name="", color="#9aa")).color)
+                    bg = QColor(base_col); bg.setAlpha(255)
+                    border = QColor(base_col.darker(140))
                 else:
-                    gray = QColor("#bbb")
-                    gray.setAlpha(120)
-                    self.scene.addRect(rect, QPen(Qt.black, 1), QBrush(gray))
+                    bg = QColor("#EFE7DE")
+                    border = CARD_BORDER
+                card_item = _add_rounded_rect(self.scene, rect, EVENT_RADIUS, QPen(border, 1.6), QBrush(bg))
+                card_item.setZValue(10)
 
-                font_name = QFont(self._font); font_name.setPointSize(13)
-                event_name = self.scene.addText(ev.title, font_name)
-                event_name.setDefaultTextColor(QColor("#cc7894"))
-                event_name.setPos(x - self.EVENT_SIZE / 2, y - self.EVENT_SIZE / 2 - 32)
+                # thumbnail i en egen “frame” som täcker hörnen
+                thumb_size = 56 if self.scale_factor >= 1.0 else 42
+                imgp = _first_existing_image(ev.images) if ev.images else None
+                text_left = rect.left() + EVENT_PADDING
+                if imgp:
+                    frame = QRectF(rect.left() + EVENT_PADDING, rect.top() + (EVENT_H - thumb_size) / 2, thumb_size, thumb_size)
+                    _add_rounded_rect(self.scene, frame, 8, QPen(QColor(0,0,0,40)), QBrush(QColor(255,255,255)))
+                    pix = QPixmap(imgp)
+                    if not pix.isNull():
+                        inner = frame.adjusted(3, 3, -3, -3)
+                        pix = pix.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                        pm_item = self.scene.addPixmap(pix)
+                        pm_item.setPos(inner.left(), inner.top())
+                        pm_item.setZValue(12)
+                    text_left = frame.right() + 10
 
-                font_date = QFont(self._font); font_date.setPointSize(10)
-                datetxt = f"{ev.start_date} - {ev.end_date}" if ev.end_date else ev.start_date
-                date_item = self.scene.addText(datetxt, font_date)
-                date_item.setDefaultTextColor(Qt.darkCyan)
-                date_item.setPos(x - self.EVENT_SIZE / 2, y - self.EVENT_SIZE / 2 - 10)
+                # text-område
+                text_right = rect.right() - (EVENT_PADDING + 56)
+                text_width = int(text_right - text_left)
+                if text_width < 10:
+                    text_width = 10
 
-                font_desc = QFont(self._font); font_desc.setPointSize(9)
-                desc = ev.description if hasattr(ev, "description") else ""
-                desc_item = self.scene.addText(desc, font_desc)
-                desc_item.setDefaultTextColor(Qt.darkGray)
-                desc_item.setPos(x - self.EVENT_SIZE / 2, y + self.EVENT_SIZE / 2 + 8)
+                # rubrik
+                title_font = QFont(self._font); title_font.setPointSize(12); title_font.setBold(True)
+                title_text = _elide_to_width(ev.title or "", text_width)
+                t_item = self.scene.addText(title_text, title_font)
+                t_item.setDefaultTextColor(TITLE_COLOR)
+                t_item.setPos(text_left, rect.top() + 10)
+                t_item.setZValue(15)
 
-                if self.scale_factor >= 2.0 and getattr(ev, "images", None):
-                    img_path = ev.images[0]
-                    if not os.path.isabs(img_path):
-                        img_path = os.path.join(os.getcwd(), img_path)
-                    if os.path.exists(img_path):
-                        pix = QPixmap(img_path)
-                        if not pix.isNull():
-                            pix = pix.scaled(int(self.EVENT_SIZE * 2), int(self.EVENT_SIZE * 2), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                            img_item = self.scene.addPixmap(pix)
-                            img_item.setPos(x + self.EVENT_SIZE / 2 + 18, y - self.EVENT_SIZE / 2)
+                # datum
+                date_font = QFont(self._font); date_font.setPointSize(10)
+                date_text = f"{ev.start_date} – {ev.end_date}" if ev.end_date else (ev.start_date or "")
+                date_text = _elide_to_width(date_text, text_width)
+                d_item = self.scene.addText(date_text, date_font)
+                d_item.setDefaultTextColor(DATE_COLOR)
+                d_item.setPos(text_left, rect.top() + 32)
+                d_item.setZValue(15)
 
-        self.setSceneRect(0, 0, timeline_width + self.LEFT_MARGIN, timeline_height)
+                # beskrivning
+                desc_font = QFont(self._font); desc_font.setPointSize(10)
+                desc_text = _elide_to_width(ev.description or "", text_width)
+                desc_item = self.scene.addText(desc_text, desc_font)
+                desc_item.setDefaultTextColor(DESC_COLOR)
+                desc_item.setPos(text_left, rect.top() + 52)
+                desc_item.setZValue(15)
+
+                # character-chips — uppe till höger i kortet
+                cx = rect.right() - EVENT_PADDING - 12
+                cy = rect.top() + EVENT_PADDING + 10
+                for name in (ev.characters or [])[:3]:
+                    col = QColor(char_by_name.get(name, Character(name="", color="#888")).color)
+                    chip = self.scene.addEllipse(cx - 8, cy - 8, 16, 16, QPen(Qt.NoPen), QBrush(col)); chip.setZValue(16)
+                    initials = (name.strip()[:1] or " ").upper()
+                    chip_txt = self.scene.addText(initials, QFont(self._font.family(), 8))
+                    chip_txt.setDefaultTextColor(CHIP_TEXT); chip_txt.setPos(cx - 5, cy - 10); chip_txt.setZValue(16)
+                    cx -= 18
 
     def zoom_in(self):
-        self.scale(1.2, 1.2); self.scale_factor *= 1.2
+        self.scale(1.12, 1.12)
+        self.scale_factor *= 1.12
 
     def zoom_out(self):
-        self.scale(1/1.2, 1/1.2); self.scale_factor /= 1.2
+        self.scale(1 / 1.12, 1 / 1.12)
+        self.scale_factor /= 1.12
 
     def wheelEvent(self, event):
         if event.modifiers() == Qt.ControlModifier:
@@ -168,154 +272,98 @@ class TimelineGraphWidget(QGraphicsView):
         else:
             super().wheelEvent(event)
 
-
-
+# ---- tab with filters + splitter ----
 class TimelineTab(QWidget):
     def __init__(self, get_events_fn, get_characters_fn, get_places_fn):
         super().__init__()
 
-        self.char_filter = QListWidget()
-        self.char_filter.setSelectionMode(QListWidget.MultiSelection)
-
-        self.place_filter = QListWidget()
-        self.place_filter.setSelectionMode(QListWidget.MultiSelection)
-
-        self.date_from = QDateEdit()
-        self.date_from.setCalendarPopup(True)
-        self.date_from.setDisplayFormat("yyyy-MM-dd")
-        self.date_to = QDateEdit()
-        self.date_to.setCalendarPopup(True)
-        self.date_to.setDisplayFormat("yyyy-MM-dd")
+        # filter widgets
+        self.char_filter = QListWidget(); self.char_filter.setSelectionMode(QListWidget.MultiSelection)
+        self.place_filter = QListWidget(); self.place_filter.setSelectionMode(QListWidget.MultiSelection)
+        self.date_from = QDateEdit(); self.date_from.setCalendarPopup(True); self.date_from.setDisplayFormat("yyyy-MM-dd")
+        self.date_to   = QDateEdit(); self.date_to.setCalendarPopup(True);   self.date_to.setDisplayFormat("yyyy-MM-dd")
+        self.auto_dates = QCheckBox("Auto dates"); self.auto_dates.setChecked(True)
 
         self.apply_btn = QPushButton("Apply")
         self.clear_btn = QPushButton("Clear")
         self.zoomin_btn = QPushButton("+")
         self.zoomout_btn = QPushButton("-")
-        self.auto_dates = QCheckBox("Auto dates")
-        self.auto_dates.setChecked(True)
 
-
+        # data providers
         self._get_events_raw = get_events_fn
         self._get_characters = get_characters_fn
-        self._get_places = get_places_fn
-        self.graph = TimelineGraphWidget(self._get_events_filtered, self._get_characters, self._get_places)
+        self._get_places     = get_places_fn
 
+        self.graph = PrettyTimelineView(self._get_events_filtered, self._get_characters, self._get_places)
+
+        # controls container (som kan läggas i en splitter)
+        controls = QWidget()
+        controls_layout = QVBoxLayout(controls)
+        # rad 1
+        left = QVBoxLayout(); left.addWidget(QLabel("Characters:")); left.addWidget(self.char_filter)
+        mid  = QVBoxLayout();  mid.addWidget(QLabel("Places:"));     mid.addWidget(self.place_filter)
+        right= QVBoxLayout();  right.addWidget(QLabel("From:"));     right.addWidget(self.date_from)
+        right.addWidget(QLabel("To:")); right.addWidget(self.date_to)
+        row1 = QHBoxLayout(); row1.addLayout(left, 2); row1.addLayout(mid, 2); row1.addLayout(right, 1)
+        controls_layout.addLayout(row1)
+        # rad 2
+        row2 = QHBoxLayout()
+        row2.addWidget(self.apply_btn); row2.addWidget(self.clear_btn); row2.addWidget(self.auto_dates)
+        row2.addStretch(1); row2.addWidget(self.zoomin_btn); row2.addWidget(self.zoomout_btn)
+        controls_layout.addLayout(row2)
+
+        # Splitter: gör att du kan dra hur mycket plats timeline/filters tar
+        splitter = QSplitter(Qt.Vertical)
+        splitter.addWidget(controls)
+        splitter.addWidget(self.graph)
+        splitter.setCollapsible(0, False)
+        splitter.setCollapsible(1, False)
+        splitter.setSizes([220, 600])  # initial fördelning
+
+        root = QVBoxLayout(self)
+        root.addWidget(splitter)
+
+        # populate + defaults
         self._populate_filters()
-
-        filt_row1 = QHBoxLayout()
-        left = QVBoxLayout()
-        left.addWidget(QLabel("Characters (multi-select):"))
-        left.addWidget(self.char_filter)
-        mid = QVBoxLayout()
-        mid.addWidget(QLabel("Places (multi-select):"))
-        mid.addWidget(self.place_filter)
-        right = QVBoxLayout()
-        right.addWidget(QLabel("Date from:"))
-        right.addWidget(self.date_from)
-        right.addWidget(QLabel("Date to:"))
-        right.addWidget(self.date_to)
-        btns = QHBoxLayout()
-        btns.addWidget(self.apply_btn)
-        btns.addWidget(self.clear_btn)
-        btns.addWidget(self.auto_dates)
-        btns.addStretch(1)
-        btns.addWidget(self.zoomin_btn)
-        btns.addWidget(self.zoomout_btn)
-
-        top = QHBoxLayout()
-        top.addLayout(left, 2)
-        top.addLayout(mid, 2)
-        top.addLayout(right, 1)
-
-        self.apply_btn.clicked.connect(self.refresh)
-        self.clear_btn.clicked.connect(self._clear_filters)
-        self.zoomin_btn.clicked.connect(self.graph.zoom_in)
-        self.zoomout_btn.clicked.connect(self.graph.zoom_out)
-        self.char_filter.itemSelectionChanged.connect(self._maybe_auto_dates)
-        self.place_filter.itemSelectionChanged.connect(self._maybe_auto_dates)
-        
-
-        layout = QVBoxLayout(self)
-        layout.addLayout(top)
-        layout.addLayout(btns)
-        layout.addWidget(self.graph)
-
         self._init_date_defaults()
+
+        # signals
+        self.apply_btn.clicked.connect(self.refresh)          # type: ignore
+        self.clear_btn.clicked.connect(self._clear_filters)   # type: ignore
+        self.zoomin_btn.clicked.connect(self.graph.zoom_in)   # type: ignore
+        self.zoomout_btn.clicked.connect(self.graph.zoom_out) # type: ignore
+        self.char_filter.itemSelectionChanged.connect(self._maybe_auto_dates)   # type: ignore
+        self.place_filter.itemSelectionChanged.connect(self._maybe_auto_dates)  # type: ignore
+
         self.graph.refresh()
 
-
+    # ---- filtering ----
     def _populate_filters(self):
         with QSignalBlocker(self.char_filter):
             self.char_filter.clear()
             for c in self._get_characters():
                 self.char_filter.addItem(QListWidgetItem(c.name))
-
         with QSignalBlocker(self.place_filter):
             self.place_filter.clear()
             for p in self._get_places():
                 self.place_filter.addItem(QListWidgetItem(p.name))
 
-
     def _init_date_defaults(self):
-        dates = [_parse_date(e.start_date) for e in self._get_events_raw() if e.start_date]
-        dates = [d for d in dates if d]
-        if not dates:
-            today = QDate.currentDate()
-            with QSignalBlocker(self.date_from), QSignalBlocker(self.date_to):
-                self.date_from.setDate(today)
-                self.date_to.setDate(today)
-            return
-        dmin, dmax = min(dates), max(dates)
+        dts = [_parse_date(e.start_date) for e in self._get_events_raw() if e.start_date]
+        dts = [d for d in dts if d]
+        today = QDate.currentDate()
         with QSignalBlocker(self.date_from), QSignalBlocker(self.date_to):
-            self.date_from.setDate(QDate.fromString(dmin.strftime("%Y-%m-%d"), "yyyy-MM-dd"))
-            self.date_to.setDate(QDate.fromString(dmax.strftime("%Y-%m-%d"), "yyyy-MM-dd"))
-
-    def _maybe_auto_dates(self):
-        if not self.auto_dates.isChecked():
-            return
-
-        events = self._get_events_raw()
-        sel_chars = set(self._selected_chars())
-        sel_places = set(self._selected_places())
-
-        def char_ok(ev: Event) -> bool:
-            return True if not sel_chars else bool(set(ev.characters) & sel_chars)
-
-        def place_ok(ev: Event) -> bool:
-            return True if not sel_places else bool(set(ev.places) & sel_places)
-
-        from datetime import datetime
-        dates: list[datetime] = []
-        for ev in events:
-            if not ev.start_date:
-                continue
-            if char_ok(ev) and place_ok(ev):
-                d = _parse_date(ev.start_date)
-                if d:
-                    dates.append(d)
-
-        if not dates:
-            today = QDate.currentDate()
-            with QSignalBlocker(self.date_from), QSignalBlocker(self.date_to):
-                self.date_from.setDate(today)
-                self.date_to.setDate(today)
-            self.graph.refresh()
-            return
-
-        dmin, dmax = min(dates), max(dates)
-        with QSignalBlocker(self.date_from), QSignalBlocker(self.date_to):
-            self.date_from.setDate(QDate.fromString(dmin.strftime("%Y-%m-%d"), "yyyy-MM-dd"))
-            self.date_to.setDate(QDate.fromString(dmax.strftime("%Y-%m-%d"), "yyyy-MM-dd"))
-
-        self.graph.refresh()
-
-
+            if not dts:
+                self.date_from.setDate(today); self.date_to.setDate(today)
+            else:
+                self.date_from.setDate(QDate.fromString(min(dts).strftime("%Y-%m-%d"), "yyyy-MM-dd"))
+                self.date_to.setDate(QDate.fromString(max(dts).strftime("%Y-%m-%d"), "yyyy-MM-dd"))
 
     def _selected_chars(self) -> List[str]:
-        return [it.text() for it in self.char_filter.selectedItems()]
+        return [i.text() for i in self.char_filter.selectedItems()]
 
     def _selected_places(self) -> List[str]:
-        return [it.text() for it in self.place_filter.selectedItems()]
+        return [i.text() for i in self.place_filter.selectedItems()]
 
     def _within_dates(self, ev: Event) -> bool:
         if not ev.start_date:
@@ -323,8 +371,8 @@ class TimelineTab(QWidget):
         s = _parse_date(ev.start_date)
         if not s:
             return False
-        f = _parse_date(_date_str(self.date_from.date()))
-        t = _parse_date(_date_str(self.date_to.date()))
+        f = _parse_date(self.date_from.date().toString("yyyy-MM-dd"))
+        t = _parse_date(self.date_to.date().toString("yyyy-MM-dd"))
         if f and s < f:
             return False
         if t and s > t:
@@ -336,28 +384,38 @@ class TimelineTab(QWidget):
         sel_chars = set(self._selected_chars())
         sel_places = set(self._selected_places())
 
-        def char_ok(ev: Event) -> bool:
-            if not sel_chars:
-                return True
-            return bool(set(ev.characters) & sel_chars)
+        def char_ok(e: Event):  return True if not sel_chars else bool(set(e.characters) & sel_chars)
+        def place_ok(e: Event): return True if not sel_places else bool(set(e.places) & sel_places)
 
-        def place_ok(ev: Event) -> bool:
-            if not sel_places:
-                return True
-            return bool(set(ev.places) & sel_places)
+        return [e for e in events if self._within_dates(e) and char_ok(e) and place_ok(e)]
 
-        return [
-            ev for ev in events
-            if self._within_dates(ev) and char_ok(ev) and place_ok(ev)
-        ]
+    def _maybe_auto_dates(self):
+        if not self.auto_dates.isChecked():
+            return
+        events = self._get_events_raw()
+        sel_chars = set(self._selected_chars())
+        sel_places = set(self._selected_places())
+        dts: List[datetime] = []
+        for e in events:
+            d = _parse_date(e.start_date)
+            if not d:
+                continue
+            if (not sel_chars or set(e.characters) & sel_chars) and (not sel_places or set(e.places) & sel_places):
+                dts.append(d)
+        with QSignalBlocker(self.date_from), QSignalBlocker(self.date_to):
+            if dts:
+                self.date_from.setDate(QDate.fromString(min(dts).strftime("%Y-%m-%d"), "yyyy-MM-dd"))
+                self.date_to.setDate(QDate.fromString(max(dts).strftime("%Y-%m-%d"), "yyyy-MM-dd"))
+            else:
+                today = QDate.currentDate()
+                self.date_from.setDate(today)
+                self.date_to.setDate(today)
+        self.graph.refresh()
 
     def _clear_filters(self):
         self.char_filter.clearSelection()
         self.place_filter.clearSelection()
-        if self.auto_dates.isChecked():
-            self._init_date_defaults()
-        else:
-            self._init_date_defaults()
+        self._init_date_defaults()
         self.refresh()
 
     def refresh(self):
