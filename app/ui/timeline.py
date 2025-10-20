@@ -182,7 +182,13 @@ class PrettyTimelineView(QGraphicsView):
 
                 x = x_for(sdt)
                 y_center = TOP_MARGIN + row_idx * ROW_H + ROW_H / 2
-                rect = QRectF(x - EVENT_W / 2, y_center - EVENT_H / 2, EVENT_W, EVENT_H)
+
+                raw_left = x - EVENT_W / 2
+                min_left = LEFT_MARGIN  # keep cards to the right of the label/pill area
+                max_left = scene_w - 60 - EVENT_W
+                rect_left = max(min_left, min(raw_left, max_left))
+
+                rect = QRectF(rect_left, y_center - EVENT_H / 2, EVENT_W, EVENT_H)
 
                 # skugga (Z: 5)
                 shadow = QRectF(rect); shadow.translate(0, 4)
@@ -200,34 +206,58 @@ class PrettyTimelineView(QGraphicsView):
                 card_item = _add_rounded_rect(self.scene, rect, EVENT_RADIUS, QPen(border, 1.6), QBrush(bg))
                 card_item.setZValue(10)
 
-                # thumbnail i en egen “frame” som täcker hörnen
-                thumb_size = 56 if self.scale_factor >= 1.0 else 42
+                # thumbnail - gör mindre och placera alltid helt till vänster i kortet
+                thumb_size = min(56, int(EVENT_H - 2 * EVENT_PADDING))
                 imgp = _first_existing_image(ev.images) if ev.images else None
-                text_left = rect.left() + EVENT_PADDING
-                if imgp:
-                    frame = QRectF(rect.left() + EVENT_PADDING, rect.top() + (EVENT_H - thumb_size) / 2, thumb_size, thumb_size)
-                    _add_rounded_rect(self.scene, frame, 8, QPen(QColor(0,0,0,40)), QBrush(QColor(255,255,255)))
-                    pix = QPixmap(imgp)
-                    if not pix.isNull():
-                        inner = frame.adjusted(3, 3, -3, -3)
-                        pix = pix.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-                        pm_item = self.scene.addPixmap(pix)
-                        pm_item.setPos(inner.left(), inner.top())
-                        pm_item.setZValue(12)
-                    text_left = frame.right() + 10
 
-                # text-område
-                text_right = rect.right() - (EVENT_PADDING + 56)
+                # compute text left after considering thumbnail (we place thumbnail inside card near left)
+                text_left = rect.left() + EVENT_PADDING
+                frame = None
+                if imgp:
+                    # Don't render thumbnail if it would leave too little space for text
+                    potential_text_right = rect.right() - (EVENT_PADDING + 56)
+                    potential_text_width = int(potential_text_right - (rect.left() + EVENT_PADDING))
+                    if potential_text_width > 80:
+                        frame = QRectF(rect.left() + EVENT_PADDING, rect.top() + (EVENT_H - thumb_size) / 2, thumb_size, thumb_size)
+                        # draw thumbnail background (white rounded rect)
+                        _add_rounded_rect(self.scene, frame, 8, QPen(QColor(0,0,0,30)), QBrush(QColor(250,250,250)))
+                        pix = QPixmap(imgp)
+                        if not pix.isNull():
+                            # fit image inside inner area
+                            inner = frame.adjusted(4, 4, -4, -4)
+                            pix = pix.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                            pm_item = self.scene.addPixmap(pix)
+                            pm_item.setPos(inner.left(), inner.top())
+                            pm_item.setZValue(12)  # above card, under text
+                        # move text start to right of frame
+                        text_left = frame.right() + 10
+                    else:
+                        imgp = None  # skip image if not enough width
+
+                # compute text right and width
+                text_right = rect.right() - (EVENT_PADDING + 12)  # give right padding
                 text_width = int(text_right - text_left)
                 if text_width < 10:
                     text_width = 10
+
+                # Ensure text background does not overlap thumbnail (extra safety)
+                if frame:
+                    text_bg_left = max(text_left - 6, frame.right() + 6)
+                else:
+                    text_bg_left = text_left - 6
+
+                # compute bg width to extend to a comfortable right margin inside card
+                bg_right_limit = rect.right() - EVENT_PADDING
+                bg_width = int(max(40, bg_right_limit - text_bg_left))
+                text_bg = QRectF(text_bg_left, rect.top() + 8, bg_width, rect.height() - 16)
+                _add_rounded_rect(self.scene, text_bg, 6, QPen(Qt.NoPen), QBrush(QColor(255,255,255,220))).setZValue(11)
 
                 # rubrik
                 title_font = QFont(self._font); title_font.setPointSize(12); title_font.setBold(True)
                 title_text = _elide_to_width(ev.title or "", text_width)
                 t_item = self.scene.addText(title_text, title_font)
                 t_item.setDefaultTextColor(TITLE_COLOR)
-                t_item.setPos(text_left, rect.top() + 10)
+                t_item.setPos(text_bg.left() + 8, rect.top() + 10)
                 t_item.setZValue(15)
 
                 # datum
@@ -236,7 +266,7 @@ class PrettyTimelineView(QGraphicsView):
                 date_text = _elide_to_width(date_text, text_width)
                 d_item = self.scene.addText(date_text, date_font)
                 d_item.setDefaultTextColor(DATE_COLOR)
-                d_item.setPos(text_left, rect.top() + 32)
+                d_item.setPos(text_bg.left() + 8, rect.top() + 32)
                 d_item.setZValue(15)
 
                 # beskrivning
@@ -244,7 +274,7 @@ class PrettyTimelineView(QGraphicsView):
                 desc_text = _elide_to_width(ev.description or "", text_width)
                 desc_item = self.scene.addText(desc_text, desc_font)
                 desc_item.setDefaultTextColor(DESC_COLOR)
-                desc_item.setPos(text_left, rect.top() + 52)
+                desc_item.setPos(text_bg.left() + 8, rect.top() + 52)
                 desc_item.setZValue(15)
 
                 # character-chips — uppe till höger i kortet
