@@ -1,14 +1,15 @@
 import json
-import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import shutil
 
-PROJECTS_DIR = Path("projects")
-CURRENT_PROJECT_NAME: Optional[str] = None
+ROOT_DIR = Path.cwd()
+PROJECTS_DIR = ROOT_DIR / "projects"
+CURRENT_FILE = ROOT_DIR / ".current_project"
 
 DEFAULT_CHARACTER = {
     "description": "",
-    "color": "#3dc2da",
+    "color": "#F8C8DC",
     "texts": [],
     "images": [],
 }
@@ -27,55 +28,61 @@ DEFAULT_EVENT = {
     "title": "",
 }
 
-def _project_dir(name: Optional[str] = None) -> Path:
-    n = name or CURRENT_PROJECT_NAME or "default"
-    return PROJECTS_DIR / n
-
-def _data_dir() -> Path:
-    return _project_dir()
-
-def _data_file() -> Path:
-    return _data_dir() / "data.json"
-
-def get_project_dir() -> Path:
-    """Publik: nuvarande projektmapp."""
-    return _project_dir()
-
-def get_pictures_dir() -> Path:
-    """Publik: nuvarande projektets pictures/ (skapas vid behov)."""
-    p = _project_dir() / "pictures"
+def _ensure_dir(p: Path):
     p.mkdir(parents=True, exist_ok=True)
-    return p
+
+def get_current_project_name() -> str:
+    if CURRENT_FILE.exists():
+        return CURRENT_FILE.read_text(encoding="utf-8").strip() or "default"
+    return "default"
 
 def set_project(name: str) -> None:
-    """Välj aktivt projekt (skapar mappen om den saknas)."""
-    global CURRENT_PROJECT_NAME
-    CURRENT_PROJECT_NAME = name
-    d = _project_dir()
-    d.mkdir(parents=True, exist_ok=True)
-    if not _data_file().exists():
-        save_state({"characters": [], "places": [], "events": []})
+    name = name.strip() or "default"
+    _ensure_dir(PROJECTS_DIR)
+    CURRENT_FILE.write_text(name, encoding="utf-8")
+    _ensure_dir(get_project_dir())
+    _ensure_dir(get_pictures_dir())
+    # Se till att data.json finns
+    df = get_data_file()
+    if not df.exists():
+        df.write_text(json.dumps({"characters": [], "places": [], "events": []}, indent=2, ensure_ascii=False), encoding="utf-8")
+
+def get_project_dir(name: Optional[str] = None) -> Path:
+    if name is None:
+        name = get_current_project_name()
+    return PROJECTS_DIR / name
+
+def get_pictures_dir(name: Optional[str] = None) -> Path:
+    return get_project_dir(name) / "pictures"
+
+def get_data_file(name: Optional[str] = None) -> Path:
+    return get_project_dir(name) / "data.json"
 
 def list_projects() -> List[str]:
-    """Lista alla projekt (mappar i projects/)."""
-    if not PROJECTS_DIR.exists():
-        return []
+    _ensure_dir(PROJECTS_DIR)
     return sorted([p.name for p in PROJECTS_DIR.iterdir() if p.is_dir()])
 
 def create_project(name: str) -> None:
-    """Skapa ett nytt projekt med tomt state."""
-    d = _project_dir(name)
-    d.mkdir(parents=True, exist_ok=True)
-    f = d / "data.json"
-    if not f.exists():
-        f.write_text(json.dumps({"characters": [], "places": [], "events": []}, indent=2, ensure_ascii=False), encoding="utf-8")
-    (d / "pictures").mkdir(exist_ok=True)
+    pd = get_project_dir(name)
+    _ensure_dir(pd)
+    _ensure_dir(pd / "pictures")
+    df = pd / "data.json"
+    if not df.exists():
+        df.write_text(json.dumps({"characters": [], "places": [], "events": []}, indent=2, ensure_ascii=False), encoding="utf-8")
 
 def delete_project(name: str) -> None:
-    """Radera ett projekt (hela mappen)."""
-    d = _project_dir(name)
-    if d.exists():
-        shutil.rmtree(d)
+    pd = get_project_dir(name)
+    if pd.exists():
+        shutil.rmtree(pd)
+
+def rename_project(old: str, new: str) -> None:
+    op = get_project_dir(old)
+    np = get_project_dir(new)
+    if not op.exists():
+        raise FileNotFoundError(f"Project '{old}' not found")
+    if np.exists():
+        raise FileExistsError(f"Project '{new}' already exists")
+    op.rename(np)
 
 def _patch_character(c: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in DEFAULT_CHARACTER.items():
@@ -99,35 +106,22 @@ def _patch_event(e: Dict[str, Any]) -> Dict[str, Any]:
     return e
 
 def load_state() -> Dict[str, List[Dict[str, Any]]]:
-    dfile = _data_file()
-    if dfile.exists():
+    _ensure_dir(PROJECTS_DIR)
+    pd = get_project_dir()
+    _ensure_dir(pd)
+    df = get_data_file()
+    if df.exists():
         try:
-            state = json.loads(dfile.read_text(encoding="utf-8"))
+            state = json.loads(df.read_text(encoding="utf-8"))
             state["characters"] = [_patch_character(c) for c in state.get("characters", [])]
-            state["places"]     = [_patch_place(p)      for p in state.get("places", [])]
-            state["events"]     = [_patch_event(e)      for e in state.get("events", [])]
+            state["places"]     = [_patch_place(p) for p in state.get("places", [])]
+            state["events"]     = [_patch_event(e) for e in state.get("events", [])]
             return state
         except Exception:
             pass
     return {"characters": [], "places": [], "events": []}
 
 def save_state(state: Dict[str, List[Dict[str, Any]]]) -> None:
-    d = _data_dir()
-    d.mkdir(parents=True, exist_ok=True)
-    _data_file().write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
-
-def get_current_project_name() -> str:
-    return CURRENT_PROJECT_NAME or "default"
-
-def rename_project(old_name: str, new_name: str) -> None:
-    """Byt namn på projektmappen. Fel om mål finns redan."""
-    old_dir = _project_dir(old_name)
-    new_dir = _project_dir(new_name)
-    if not old_dir.exists():
-        raise FileNotFoundError(f"Project '{old_name}' does not exist")
-    if new_dir.exists():
-        raise FileExistsError(f"Project '{new_name}' already exists")
-    old_dir.rename(new_dir)
-    global CURRENT_PROJECT_NAME
-    if CURRENT_PROJECT_NAME == old_name:
-        CURRENT_PROJECT_NAME = new_name
+    pd = get_project_dir()
+    _ensure_dir(pd)
+    (pd / "data.json").write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")

@@ -5,7 +5,8 @@ from typing import List
 class Character:
     name: str
     description: str = ""
-    color: str = "#ec6ccc"
+    # Endast förvalda färger (hanteras i UI)
+    color: str = "#F8C8DC"  # baby pink default
     texts: List[str] = field(default_factory=list)
     images: List[str] = field(default_factory=list)
 

@@ -16,20 +16,16 @@ from ..models import Event, Character, Place
 ROW_H           = 100
 LEFT_MARGIN     = 180
 TOP_MARGIN      = 100
-EVENT_W         = 280
-EVENT_H         = 96
 EVENT_RADIUS    = 12
 EVENT_PADDING   = 12
-TICK_EVERY_DAYS = 7
 X_STEP_MIN      = 210
 
 BG_COLOR        = QColor("#F7F8FB")
-PANEL_COLOR     = QColor("#FFFFFF")        # panelen där timelinen ritas
+PANEL_COLOR     = QColor("#FFFFFF")
 PANEL_BORDER    = QColor(220, 224, 236)
 AXIS_COLOR      = QColor(190, 195, 210)
 TIMELINE_COLOR  = QColor(120, 150, 210)
 
-# Hög kontrast och dyslexi-vänligt
 TITLE_COLOR     = QColor("#1F2937")
 DATE_COLOR      = QColor("#0F766E")
 DESC_COLOR      = QColor("#374151")
@@ -92,27 +88,23 @@ class PrettyTimelineView(QGraphicsView):
 
         self._font = QFont("Segoe UI")
         self._font.setPointSize(10)
-        self.setMouseTracking(True)
-        self.viewport().setMouseTracking(True)
-
-    def mouseDoubleClickEvent(self, event):
-        # snabbväxel: gå till full detalj om du är i none/abbr-läge
-        if self._lod().get("title_mode") != "full":
-            self.scale(1.35, 1.35)
-            self.scale_factor *= 1.35
-            self.refresh()
-        else:
-            super().mouseDoubleClickEvent(event)
-       
-
+        self.setMouseTracking(True); self.viewport().setMouseTracking(True)
 
     def minimumSizeHint(self) -> QSize:
         return QSize(400, 300)
 
+    def mouseDoubleClickEvent(self, event):
+        if self._lod().get("title_mode") != "full":
+            step = 1.35
+            self.scale(step, step)
+            self.scale_factor *= step
+            self.refresh()
+        else:
+            super().mouseDoubleClickEvent(event)
+
     def _lod(self):
         z = self.scale_factor
         if z < 0.95:
-            # långt utzoomat
             return {
                 "tick_days": 28,
                 "date_fmt": "%Y-%m",
@@ -127,14 +119,13 @@ class PrettyTimelineView(QGraphicsView):
                 "event_h": 72,
             }
         elif z < 1.20:
-            # mellanläge – 3 bokstäver
             return {
                 "tick_days": 7,
                 "date_fmt": "%Y-%m-%d",
                 "show_image": True,
                 "thumb": 52,
                 "title_mode": "abbr3",
-                "show_date": True,     # visa datum redan här
+                "show_date": True,
                 "show_desc": False,
                 "wrap_desc": False,
                 "max_chips": 2,
@@ -142,7 +133,6 @@ class PrettyTimelineView(QGraphicsView):
                 "event_h": 86,
             }
         else:
-            # fulla detaljer tidigt
             return {
                 "tick_days": 3,
                 "date_fmt": "%Y-%m-%d",
@@ -157,14 +147,13 @@ class PrettyTimelineView(QGraphicsView):
                 "event_h": 108,
             }
 
-
     def refresh(self):
         self.scene.clear()
         events: List[Event] = self.get_events_fn()
         characters: List[Character] = self.get_characters_fn()
         places: List[Place] = self.get_places_fn()
 
-        L = self._lod()  # använder title_mode, show_date, show_desc, wrap_desc, thumb, m.m.
+        L = self._lod()
         EVENT_W_LOCAL = L["event_w"]
         EVENT_H_LOCAL = L["event_h"]
         TICK_DAYS = L["tick_days"]
@@ -187,7 +176,7 @@ class PrettyTimelineView(QGraphicsView):
         dmin = dmin - timedelta(days=1)
         dmax = dmax + timedelta(days=1)
 
-        step_px = max(X_STEP_MIN, 140)  # grund-pixelsteg
+        step_px = max(X_STEP_MIN, 140)
 
         def x_for(dt: datetime) -> float:
             days = (dt - dmin).days
@@ -203,7 +192,7 @@ class PrettyTimelineView(QGraphicsView):
         panel_rect = QRectF(20, 20, scene_w - 40, scene_h - 40)
         _add_rounded_rect(self.scene, panel_rect, 16, QPen(PANEL_BORDER), QBrush(PANEL_COLOR))
 
-        # platsrader
+        # platsrader + pill + place-avatar
         for i, p in enumerate(places):
             y = TOP_MARGIN + i * ROW_H
             line_y = y + ROW_H / 2
@@ -212,7 +201,6 @@ class PrettyTimelineView(QGraphicsView):
             pill_rect = QRectF(20, line_y - 16, LEFT_MARGIN - 40, 28)
             _add_rounded_rect(self.scene, pill_rect, 12, QPen(PLACE_PILL_STROKE), QBrush(PLACE_PILL_BG))
 
-            # --- NYTT: liten place-bild i pill ---
             p_img = _first_existing_image(getattr(p, "images", []))
             name_x = pill_rect.left() + 10
             if p_img:
@@ -224,13 +212,11 @@ class PrettyTimelineView(QGraphicsView):
                     pm = pm.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
                     pm_item = self.scene.addPixmap(pm)
                     pm_item.setPos(inner.left(), inner.top())
-                name_x = avatar_rect.right() + 6  # flytta texten förbi bilden
+                name_x = avatar_rect.right() + 6
 
-            # platsnamn
             name_item = self.scene.addText(_elide(p.name, 18), self._font)
             name_item.setDefaultTextColor(Qt.black)
             name_item.setPos(name_x, pill_rect.top() + 4)
-
 
         # datumtick
         tick = dmin - timedelta(days=(dmin.weekday() % 7))
@@ -256,17 +242,15 @@ class PrettyTimelineView(QGraphicsView):
                 x = x_for(sdt)
                 y_center = TOP_MARGIN + row_idx * ROW_H + ROW_H / 2
 
-                raw_left = x - EVENT_W_LOCAL / 2
+                raw_left = x - L["event_w"] / 2
                 min_left = LEFT_MARGIN
-                max_left = scene_w - 60 - EVENT_W_LOCAL
+                max_left = scene_w - 60 - L["event_w"]
                 rect_left = max(min_left, min(raw_left, max_left))
-                rect = QRectF(rect_left, y_center - EVENT_H_LOCAL / 2, EVENT_W_LOCAL, EVENT_H_LOCAL)
+                rect = QRectF(rect_left, y_center - L["event_h"] / 2, L["event_w"], L["event_h"])
 
-                # skugga
                 shadow = QRectF(rect); shadow.translate(0, 4)
                 _add_rounded_rect(self.scene, shadow, EVENT_RADIUS, QPen(Qt.NoPen), QBrush(SHADOW_COLOR))
 
-                # bakgrund
                 if ev.characters:
                     base_col = QColor(char_by_name.get(ev.characters[0], Character(name="", color="#9aa")).color)
                     bg = QColor(base_col); bg.setAlpha(255)
@@ -275,26 +259,20 @@ class PrettyTimelineView(QGraphicsView):
                     bg = QColor("#EFE7DE"); border = CARD_BORDER
                 _add_rounded_rect(self.scene, rect, EVENT_RADIUS, QPen(border, 1.6), QBrush(bg))
 
-                # layout
                 padding   = EVENT_PADDING
                 text_left = rect.left() + padding
 
-                # bild (LOD)
-                if L["show_image"] and ev.images:
-                    imgp = _first_existing_image(ev.images)
-                else:
-                    imgp = None
-
+                # event-thumbnail (LOD)
+                imgp = _first_existing_image(ev.images) if (L["show_image"] and ev.images) else None
                 if imgp and L["thumb"] > 0:
                     frame = QRectF(rect.left() + padding,
-                                rect.top()  + (EVENT_H_LOCAL - L["thumb"]) / 2,
-                                L["thumb"], L["thumb"])
+                                   rect.top()  + (L["event_h"] - L["thumb"]) / 2,
+                                   L["thumb"], L["thumb"])
                     _add_rounded_rect(self.scene, frame, 8, QPen(QColor(0,0,0,30)), QBrush(Qt.white))
                     pix = QPixmap(imgp)
                     if not pix.isNull():
                         inner = frame.adjusted(4, 4, -4, -4)
-                        pix = pix.scaled(int(inner.width()), int(inner.height()),
-                                        Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                        pix = pix.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatio, Qt.SmoothTransformation)
                         pm_item = self.scene.addPixmap(pix)
                         pm_item.setPos(inner.left(), inner.top())
                     text_left = frame.right() + 10
@@ -302,11 +280,10 @@ class PrettyTimelineView(QGraphicsView):
                 text_right = rect.right() - (padding + 12)
                 text_width = max(10, int(text_right - text_left))
 
-                # ---- TITLE / DATE / DESC med LOD ----
                 base_y   = rect.top() + 10
                 next_y   = base_y
-                title_shown = False
 
+                # Title (LOD)
                 title_mode = L.get("title_mode", "full")
                 if title_mode != "none":
                     title_font = QFont(self._font); title_font.setPointSize(12); title_font.setBold(True)
@@ -316,8 +293,7 @@ class PrettyTimelineView(QGraphicsView):
                         t_item.setDefaultTextColor(TITLE_COLOR)
                         t_item.setPos(text_left, base_y)
                         next_y = base_y + 22
-                        title_shown = True
-                    else:  # "full" (wrap inne i kortet)
+                    else:  # full
                         t_item = self.scene.addText("")
                         t_item.setDefaultTextColor(TITLE_COLOR)
                         t_item.setFont(title_font)
@@ -325,8 +301,8 @@ class PrettyTimelineView(QGraphicsView):
                         t_item.setPlainText(ev.title or "")
                         t_item.setPos(text_left, base_y)
                         next_y = base_y + 24
-                        title_shown = True
 
+                # Date (LOD)
                 if L.get("show_date", False):
                     d_font = QFont(self._font); d_font.setPointSize(10)
                     date_text = f"{ev.start_date} – {ev.end_date}" if ev.end_date else (ev.start_date or "")
@@ -335,6 +311,7 @@ class PrettyTimelineView(QGraphicsView):
                     d_item.setPos(text_left, next_y)
                     next_y += 20
 
+                # Description (LOD)
                 if L.get("show_desc", False):
                     desc_font = QFont(self._font); desc_font.setPointSize(10)
                     if L.get("wrap_desc", False):
@@ -350,7 +327,7 @@ class PrettyTimelineView(QGraphicsView):
                         desc.setDefaultTextColor(DESC_COLOR)
                         desc.setPos(text_left, next_y)
 
-                # chips
+                # Character chips (med bilder om finns)
                 cx = rect.right() - padding - 12
                 cy = rect.top() + padding + 10
                 for name in (ev.characters or [])[: L["max_chips"]]:
@@ -363,12 +340,10 @@ class PrettyTimelineView(QGraphicsView):
                         pm = QPixmap(ch_img)
                         if not pm.isNull():
                             inner = chip_rect.adjusted(2, 2, -2, -2)
-                            pm = pm.scaled(int(inner.width()), int(inner.height()),
-                                        Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                            pm = pm.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
                             pm_item = self.scene.addPixmap(pm)
                             pm_item.setPos(inner.left(), inner.top())
                     else:
-                        # fallback: färgad dot + initial
                         self.scene.addEllipse(cx - 8, cy - 8, 16, 16, QPen(Qt.NoPen), QBrush(QColor(ch.color)))
                         initials = (name.strip()[:1] or " ").upper()
                         chip_txt = self.scene.addText(initials, QFont(self._font.family(), 8))
@@ -376,7 +351,6 @@ class PrettyTimelineView(QGraphicsView):
                         chip_txt.setPos(cx - 5, cy - 10)
 
                     cx -= 18
-
 
     def zoom_in(self):
         step = 1.25
@@ -390,7 +364,6 @@ class PrettyTimelineView(QGraphicsView):
         self.scale_factor /= step
         self.refresh()
 
-
     def wheelEvent(self, event):
         if event.modifiers() == Qt.ControlModifier:
             if event.angleDelta().y() > 0:
@@ -400,12 +373,11 @@ class PrettyTimelineView(QGraphicsView):
         else:
             super().wheelEvent(event)
 
-# ---- tab with filters + splitter ----
+# ---- Tab with filters + splitter ----
 class TimelineTab(QWidget):
     def __init__(self, get_events_fn, get_characters_fn, get_places_fn):
         super().__init__()
 
-        # filter widgets
         self.char_filter = QListWidget(); self.char_filter.setSelectionMode(QListWidget.MultiSelection)
         self.place_filter = QListWidget(); self.place_filter.setSelectionMode(QListWidget.MultiSelection)
         self.date_from = QDateEdit(); self.date_from.setCalendarPopup(True); self.date_from.setDisplayFormat("yyyy-MM-dd")
@@ -417,55 +389,47 @@ class TimelineTab(QWidget):
         self.zoomin_btn = QPushButton("+")
         self.zoomout_btn = QPushButton("-")
 
-        # data providers
         self._get_events_raw = get_events_fn
         self._get_characters = get_characters_fn
         self._get_places     = get_places_fn
 
         self.graph = PrettyTimelineView(self._get_events_filtered, self._get_characters, self._get_places)
 
-        # controls container (som kan läggas i en splitter)
         controls = QWidget()
         controls_layout = QVBoxLayout(controls)
-        # rad 1
         left = QVBoxLayout(); left.addWidget(QLabel("Characters:")); left.addWidget(self.char_filter)
         mid  = QVBoxLayout();  mid.addWidget(QLabel("Places:"));     mid.addWidget(self.place_filter)
         right= QVBoxLayout();  right.addWidget(QLabel("From:"));     right.addWidget(self.date_from)
         right.addWidget(QLabel("To:")); right.addWidget(self.date_to)
         row1 = QHBoxLayout(); row1.addLayout(left, 2); row1.addLayout(mid, 2); row1.addLayout(right, 1)
         controls_layout.addLayout(row1)
-        # rad 2
         row2 = QHBoxLayout()
         row2.addWidget(self.apply_btn); row2.addWidget(self.clear_btn); row2.addWidget(self.auto_dates)
         row2.addStretch(1); row2.addWidget(self.zoomin_btn); row2.addWidget(self.zoomout_btn)
         controls_layout.addLayout(row2)
 
-        # Splitter: gör att du kan dra hur mycket plats timeline/filters tar
         splitter = QSplitter(Qt.Vertical)
         splitter.addWidget(controls)
         splitter.addWidget(self.graph)
         splitter.setCollapsible(0, False)
         splitter.setCollapsible(1, False)
-        splitter.setSizes([220, 600])  # initial fördelning
+        splitter.setSizes([220, 600])
 
         root = QVBoxLayout(self)
         root.addWidget(splitter)
 
-        # populate + defaults
         self._populate_filters()
         self._init_date_defaults()
 
-        # signals
-        self.apply_btn.clicked.connect(self.refresh)          # type: ignore
-        self.clear_btn.clicked.connect(self._clear_filters)   # type: ignore
-        self.zoomin_btn.clicked.connect(self.graph.zoom_in)   # type: ignore
-        self.zoomout_btn.clicked.connect(self.graph.zoom_out) # type: ignore
-        self.char_filter.itemSelectionChanged.connect(self._maybe_auto_dates)   # type: ignore
-        self.place_filter.itemSelectionChanged.connect(self._maybe_auto_dates)  # type: ignore
+        self.apply_btn.clicked.connect(self.refresh)
+        self.clear_btn.clicked.connect(self._clear_filters)
+        self.zoomin_btn.clicked.connect(self.graph.zoom_in)
+        self.zoomout_btn.clicked.connect(self.graph.zoom_out)
+        self.char_filter.itemSelectionChanged.connect(self._maybe_auto_dates)
+        self.place_filter.itemSelectionChanged.connect(self._maybe_auto_dates)
 
         self.graph.refresh()
 
-    # ---- filtering ----
     def _populate_filters(self):
         with QSignalBlocker(self.char_filter):
             self.char_filter.clear()

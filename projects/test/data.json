@@ -13,6 +13,15 @@
       "color": "#add8e6",
       "texts": [],
       "images": []
+    },
+    {
+      "name": "vem",
+      "description": "vi testar bara",
+      "color": "#BEE5B0",
+      "texts": [],
+      "images": [
+        "pictures\\0.jpg"
+      ]
     }
   ],
   "places": [
@@ -31,6 +40,12 @@
       "images": [
         "pictures\\Screenshot 2025-10-07 162118.png"
       ]
+    },
+    {
+      "name": "hemma",
+      "description": "jag är hemma just nu",
+      "texts": [],
+      "images": []
     }
   ],
   "events": [
@@ -62,6 +77,19 @@
       ],
       "places": [
         "alby"
+      ]
+    },
+    {
+      "title": "blir arg",
+      "description": "jae trött",
+      "start_date": "2025-10-20",
+      "end_date": "2025-10-20",
+      "images": [],
+      "characters": [
+        "fatema"
+      ],
+      "places": [
+        "hemma"
       ]
     }
   ]
