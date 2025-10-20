@@ -20,13 +20,17 @@
       "name": "skolan",
       "description": "sitter i skolan nu",
       "texts": [],
-      "images": []
+      "images": [
+        "pictures\\Screenshot 2025-10-07 162118.png"
+      ]
     },
     {
       "name": "alby",
       "description": "han är i alby",
       "texts": [],
-      "images": []
+      "images": [
+        "pictures\\Screenshot 2025-10-07 162118.png"
+      ]
     }
   ],
   "events": [

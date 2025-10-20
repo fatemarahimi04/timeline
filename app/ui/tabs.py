@@ -15,10 +15,21 @@ class CharacterForm(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Character")
         self.setModal(True)
+
         self.name_edit = QLineEdit()
         self.desc_edit = QTextEdit()
+
+        # färg-knapp kvar (om du redan hade den), annars kommentera bort de 3 raderna nedan
         self.color_btn = QPushButton()
         self.color_btn.clicked.connect(self._pick_color)
+
+        # --- NYTT: bilder-lista + knappar ---
+        self.images_list = QListWidget()
+        self.add_img_btn = QPushButton("Add Image")
+        self.del_img_btn = QPushButton("Delete Image")
+        self.add_img_btn.clicked.connect(self._add_img)
+        self.del_img_btn.clicked.connect(self._del_img)
+
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("Name:"))
         layout.addWidget(self.name_edit)
@@ -26,41 +37,72 @@ class CharacterForm(QDialog):
         layout.addWidget(self.desc_edit)
         layout.addWidget(QLabel("Color:"))
         layout.addWidget(self.color_btn)
+
+        layout.addWidget(QLabel("Images:"))
+        layout.addWidget(self.images_list)
+        img_row = QHBoxLayout()
+        img_row.addWidget(self.add_img_btn)
+        img_row.addWidget(self.del_img_btn)
+        layout.addLayout(img_row)
+
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         btns.accepted.connect(self.accept)
         btns.rejected.connect(self.reject)
         layout.addWidget(btns)
+
         self.character = character
         if character:
             self.name_edit.setText(character.name)
             self.desc_edit.setPlainText(character.description)
             self.color_btn.setStyleSheet(f"background:{character.color}")
-            self.color_btn.setText(character.color if character else "#ffc0cb")
-        
+            self.color_btn.setText(character.color)
+            for img in getattr(character, "images", []):
+                self.images_list.addItem(img)
+        else:
+            self.color_btn.setText("#eedada")
+
     def _pick_color(self):
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QPushButton, QHBoxLayout
+        from PySide6.QtWidgets import QColorDialog
+        color = QColorDialog.getColor()
+        if color.isValid():
+            self.color_btn.setStyleSheet(f"background:{color.name()}")
+            self.color_btn.setText(color.name())
 
-        colors = [
-            ("Baby Pink", "#ffc0cb"),
-            ("Light Blue", "#add8e6"),
-            ("Light Green", "#90ee90"),
-            ("Red", "#ff6b6b"),
-            ("Turquoise", "#40e0d0"),
-            ("Butter Yellow", "#fff8b5"),
-            ("Light Brown", "#d2b48c"),
-        ]
+    def _add_img(self):
+        # kopierar vald bild in i projektets pictures/-mapp och sparar relativ sökväg
+        from ..storage import get_pictures_dir, get_project_dir
+        import shutil, os
+        file, _ = QFileDialog.getOpenFileName(
+            self, "Select Image", "",
+            "Images (*.png *.jpg *.jpeg *.bmp *.gif);;All Files (*)"
+        )
+        if not file:
+            return
+        pictures_dir = get_pictures_dir()
+        pictures_dir.mkdir(parents=True, exist_ok=True)
+        filename = os.path.basename(file)
+        dest = pictures_dir / filename
+        try:
+            shutil.copy(file, dest)
+        except Exception as e:
+            QMessageBox.warning(self, "Copy failed", f"Could not copy image:\n{e}")
+            return
+        rel = os.path.relpath(dest, get_project_dir())
+        self.images_list.addItem(rel)
 
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Choose Character Color")
-        layout = QVBoxLayout(dialog)
+    def _del_img(self):
+        for item in self.images_list.selectedItems():
+            self.images_list.takeItem(self.images_list.row(item))
 
-        for name, hex_code in colors:
-            btn = QPushButton(name)
-            btn.setStyleSheet(f"background-color: {hex_code}; border: 1px solid #555;")
-            btn.clicked.connect(lambda _, c=hex_code: self._set_color_and_close(dialog, c))
-            layout.addWidget(btn)
+    def get_result(self):
+        name = self.name_edit.text().strip()
+        if not name:
+            return None
+        desc = self.desc_edit.toPlainText()
+        color = self.color_btn.text()
+        images = [self.images_list.item(i).text() for i in range(self.images_list.count())]
+        return Character(name=name, description=desc, color=color, images=images)
 
-        dialog.exec()
 
     def _set_color_and_close(self, dialog, color):
         """Hjälpfunktion: uppdaterar knappfärg och stänger fönstret."""
@@ -81,28 +123,75 @@ class PlaceForm(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Place")
         self.setModal(True)
+
         self.name_edit = QLineEdit()
         self.desc_edit = QTextEdit()
+
+        # --- NYTT: bilder-lista + knappar ---
+        self.images_list = QListWidget()
+        self.add_img_btn = QPushButton("Add Image")
+        self.del_img_btn = QPushButton("Delete Image")
+        self.add_img_btn.clicked.connect(self._add_img)
+        self.del_img_btn.clicked.connect(self._del_img)
+
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("Name:"))
         layout.addWidget(self.name_edit)
         layout.addWidget(QLabel("Description:"))
         layout.addWidget(self.desc_edit)
+
+        layout.addWidget(QLabel("Images:"))
+        layout.addWidget(self.images_list)
+        img_row = QHBoxLayout()
+        img_row.addWidget(self.add_img_btn)
+        img_row.addWidget(self.del_img_btn)
+        layout.addLayout(img_row)
+
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         btns.accepted.connect(self.accept)
         btns.rejected.connect(self.reject)
         layout.addWidget(btns)
+
         self.place = place
         if place:
             self.name_edit.setText(place.name)
             self.desc_edit.setPlainText(place.description)
+            for img in getattr(place, "images", []):
+                self.images_list.addItem(img)
+
+    def _add_img(self):
+        from ..storage import get_pictures_dir, get_project_dir
+        import shutil, os
+        file, _ = QFileDialog.getOpenFileName(
+            self, "Select Image", "",
+            "Images (*.png *.jpg *.jpeg *.bmp *.gif);;All Files (*)"
+        )
+        if not file:
+            return
+        pictures_dir = get_pictures_dir()
+        pictures_dir.mkdir(parents=True, exist_ok=True)
+        filename = os.path.basename(file)
+        dest = pictures_dir / filename
+        try:
+            shutil.copy(file, dest)
+        except Exception as e:
+            QMessageBox.warning(self, "Copy failed", f"Could not copy image:\n{e}")
+            return
+        rel = os.path.relpath(dest, get_project_dir())
+        self.images_list.addItem(rel)
+
+    def _del_img(self):
+        for item in self.images_list.selectedItems():
+            self.images_list.takeItem(self.images_list.row(item))
 
     def get_result(self):
         name = self.name_edit.text().strip()
         if not name:
             return None
         desc = self.desc_edit.toPlainText()
-        return Place(name=name, description=desc)
+        images = [self.images_list.item(i).text() for i in range(self.images_list.count())]
+        return Place(name=name, description=desc, images=images)
+
 
 class EventForm(QDialog):
     def __init__(self, event: Event = None, characters: List[Character] = None, places: List[Place] = None, parent=None):
