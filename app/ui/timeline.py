@@ -1,3 +1,4 @@
+# Uppdaterad timeline: plats-avatarer + character-streckgubbar på chips
 from __future__ import annotations
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
@@ -20,6 +21,11 @@ EVENT_RADIUS    = 12
 EVENT_PADDING   = 12
 X_STEP_MIN      = 210
 
+# Place pill specifics
+PLACE_PILL_HEIGHT = 36
+PLACE_AVATAR_SIZE = 28
+PLACE_PILL_PADDING = 10
+
 BG_COLOR        = QColor("#F7F8FB")
 PANEL_COLOR     = QColor("#FFFFFF")
 PANEL_BORDER    = QColor(220, 224, 236)
@@ -33,7 +39,7 @@ CARD_BORDER     = QColor(90, 70, 50, 180)
 SHADOW_COLOR    = QColor(0, 0, 0, 55)
 CHIP_TEXT       = QColor(35, 35, 35)
 
-PLACE_PILL_BG   = QColor(255, 255, 255, 210)
+PLACE_PILL_BG   = QColor(255, 255, 255, 230)
 PLACE_PILL_STROKE = QColor(210, 210, 220)
 
 # ---- helpers ----
@@ -145,10 +151,6 @@ class PrettyTimelineView(QGraphicsView):
         places: List[Place] = self.get_places_fn()
 
         L = self._lod()
-        EVENT_W_LOCAL = L["event_w"]
-        EVENT_H_LOCAL = L["event_h"]
-        TICK_DAYS = L["tick_days"]
-
         char_by_name: Dict[str, Character] = {c.name: c for c in characters}
         dates = sorted({_parse_date(e.start_date) for e in events if e.start_date})
         dates = [d for d in dates if d]
@@ -171,7 +173,7 @@ class PrettyTimelineView(QGraphicsView):
 
         def x_for(dt: datetime) -> float:
             days = (dt - dmin).days
-            return LEFT_MARGIN + days * step_px / TICK_DAYS
+            return LEFT_MARGIN + days * step_px / L["tick_days"]
 
         content_w = x_for(dmax) + 220
         content_h = TOP_MARGIN + len(places) * ROW_H + 140
@@ -183,31 +185,38 @@ class PrettyTimelineView(QGraphicsView):
         panel_rect = QRectF(20, 20, scene_w - 40, scene_h - 40)
         _add_rounded_rect(self.scene, panel_rect, 16, QPen(PANEL_BORDER), QBrush(PANEL_COLOR))
 
-        # platsrader + pill + place-avatar
+        # platsrader + pill + place-avatar (oförändrat från din favorit)
         for i, p in enumerate(places):
             y = TOP_MARGIN + i * ROW_H
             line_y = y + ROW_H / 2
             self.scene.addLine(LEFT_MARGIN - 10, line_y, scene_w - 60, line_y, QPen(TIMELINE_COLOR, 3))
 
-            pill_rect = QRectF(20, line_y - 16, LEFT_MARGIN - 40, 28)
-            _add_rounded_rect(self.scene, pill_rect, 12, QPen(PLACE_PILL_STROKE), QBrush(PLACE_PILL_BG))
+            pill_rect = QRectF(20, line_y - (PLACE_PILL_HEIGHT / 2), LEFT_MARGIN - 40, PLACE_PILL_HEIGHT)
+            _add_rounded_rect(self.scene, pill_rect, PLACE_PILL_HEIGHT/2, QPen(PLACE_PILL_STROKE), QBrush(PLACE_PILL_BG))
 
             p_img = _first_existing_image(getattr(p, "images", []))
-            name_x = pill_rect.left() + 10
+            name_x = pill_rect.left() + PLACE_PILL_PADDING
             if p_img:
-                avatar_rect = QRectF(pill_rect.left() + 8, pill_rect.top() + 4, 20, 20)
-                _add_rounded_rect(self.scene, avatar_rect, 10, QPen(QColor(0,0,0,30)), QBrush(Qt.white))
+                avatar_size = min(PLACE_AVATAR_SIZE, pill_rect.height() - 6)
+                avatar_rect = QRectF(pill_rect.left() + PLACE_PILL_PADDING,
+                                     pill_rect.top() + (pill_rect.height() - avatar_size) / 2,
+                                     avatar_size, avatar_size)
+                _add_rounded_rect(self.scene, avatar_rect, avatar_size / 2, QPen(QColor(0,0,0,20)), QBrush(Qt.white))
                 pm = QPixmap(p_img)
                 if not pm.isNull():
-                    inner = avatar_rect.adjusted(2, 2, -2, -2)
-                    pm = pm.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                    inner = avatar_rect.adjusted(3, 3, -3, -3)
+                    pm = pm.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    px = inner.left() + (inner.width() - pm.width()) / 2
+                    py = inner.top() + (inner.height() - pm.height()) / 2
                     pm_item = self.scene.addPixmap(pm)
-                    pm_item.setPos(inner.left(), inner.top())
-                name_x = avatar_rect.right() + 6
+                    pm_item.setPos(px, py)
+                    pm_item.setZValue(12)
+                name_x = avatar_rect.right() + 8
 
-            name_item = self.scene.addText(_elide(p.name, 18), self._font)
+            name_font = QFont(self._font.family(), 11)
+            name_item = self.scene.addText(_elide(p.name, 24), name_font)
             name_item.setDefaultTextColor(Qt.black)
-            name_item.setPos(name_x, pill_rect.top() + 4)
+            name_item.setPos(name_x, pill_rect.top() + (pill_rect.height() - 14) / 2)
 
         # datumtick
         tick = dmin - timedelta(days=(dmin.weekday() % 7))
@@ -218,9 +227,9 @@ class PrettyTimelineView(QGraphicsView):
                 txt = self.scene.addText(tick.strftime(L["date_fmt"]), self._font)
                 txt.setDefaultTextColor(QColor(120, 120, 130))
                 txt.setPos(x - 40, TOP_MARGIN - 55)
-            tick += timedelta(days=TICK_DAYS)
+            tick += timedelta(days=L["tick_days"])
 
-        # events
+        # events (vist som kort)
         for ev in events:
             sdt = _parse_date(ev.start_date)
             if not sdt:
@@ -233,20 +242,21 @@ class PrettyTimelineView(QGraphicsView):
                 x = x_for(sdt)
                 y_center = TOP_MARGIN + row_idx * ROW_H + ROW_H / 2
 
-                raw_left = x - L["event_w"] / 2 if (L := self._lod()) else x - EVENT_W_LOCAL / 2
-                # fallback values
-                L = L if isinstance(L, dict) else self._lod()
-                raw_left = x - L["event_w"] / 2
+                Lcur = L
+                raw_left = x - Lcur["event_w"] / 2
                 min_left = LEFT_MARGIN
-                max_left = scene_w - 60 - L["event_w"]
+                max_left = scene_w - 60 - Lcur["event_w"]
                 rect_left = max(min_left, min(raw_left, max_left))
-                rect = QRectF(rect_left, y_center - L["event_h"] / 2, L["event_w"], L["event_h"])
+                rect = QRectF(rect_left, y_center - Lcur["event_h"] / 2, Lcur["event_w"], Lcur["event_h"])
 
                 shadow = QRectF(rect); shadow.translate(0, 4)
                 _add_rounded_rect(self.scene, shadow, EVENT_RADIUS, QPen(Qt.NoPen), QBrush(SHADOW_COLOR))
 
                 if ev.characters:
-                    base_col = QColor(char_by_name.get(ev.characters[0], Character(name="", color="#9aa")).color)
+                    try:
+                        base_col = QColor(char_by_name.get(ev.characters[0], Character(name="", color="#9aa")).color)
+                    except Exception:
+                        base_col = QColor("#9aa")
                     bg = QColor(base_col); bg.setAlpha(255)
                     border = QColor(base_col.darker(140))
                 else:
@@ -256,19 +266,21 @@ class PrettyTimelineView(QGraphicsView):
                 padding   = EVENT_PADDING
                 text_left = rect.left() + padding
 
-                # event-thumbnail (LOD)
-                imgp = _first_existing_image(ev.images) if (L["show_image"] and ev.images) else None
-                if imgp and L["thumb"] > 0:
+                # event-thumbnail (oförändrat)
+                imgp = _first_existing_image(ev.images) if (Lcur["show_image"] and ev.images) else None
+                if imgp and Lcur["thumb"] > 0:
                     frame = QRectF(rect.left() + padding,
-                                   rect.top()  + (L["event_h"] - L["thumb"]) / 2,
-                                   L["thumb"], L["thumb"])
+                                   rect.top()  + (Lcur["event_h"] - Lcur["thumb"]) / 2,
+                                   Lcur["thumb"], Lcur["thumb"])
                     _add_rounded_rect(self.scene, frame, 8, QPen(QColor(0,0,0,30)), QBrush(Qt.white))
                     pix = QPixmap(imgp)
                     if not pix.isNull():
                         inner = frame.adjusted(4, 4, -4, -4)
                         pix = pix.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatio, Qt.SmoothTransformation)
                         pm_item = self.scene.addPixmap(pix)
-                        pm_item.setPos(inner.left(), inner.top())
+                        px = inner.left() + (inner.width() - pix.width()) / 2
+                        py = inner.top() + (inner.height() - pix.height()) / 2
+                        pm_item.setPos(px, py)
                     text_left = frame.right() + 10
 
                 text_right = rect.right() - (padding + 12)
@@ -277,8 +289,7 @@ class PrettyTimelineView(QGraphicsView):
                 base_y   = rect.top() + 10
                 next_y   = base_y
 
-                # Title (LOD)
-                title_mode = L.get("title_mode", "full")
+                title_mode = Lcur.get("title_mode", "full")
                 if title_mode != "none":
                     title_font = QFont(self._font); title_font.setPointSize(12); title_font.setBold(True)
                     if title_mode == "abbr3":
@@ -287,17 +298,13 @@ class PrettyTimelineView(QGraphicsView):
                         t_item.setDefaultTextColor(TITLE_COLOR)
                         t_item.setPos(text_left, base_y)
                         next_y = base_y + 22
-                    else:  # full
-                        t_item = self.scene.addText("")
+                    else:
+                        t_item = self.scene.addText(_elide_to_width(ev.title or "", text_width), title_font)
                         t_item.setDefaultTextColor(TITLE_COLOR)
-                        t_item.setFont(title_font)
-                        # if QGraphicsSimpleTextItem / QGraphicsTextItem behavior differs, fallback to addText
-                        t_item.setPlainText(ev.title or "")
                         t_item.setPos(text_left, base_y)
                         next_y = base_y + 24
 
-                # Date (LOD)
-                if L.get("show_date", False):
+                if Lcur.get("show_date", False):
                     d_font = QFont(self._font); d_font.setPointSize(10)
                     date_text = f"{ev.start_date} – {ev.end_date}" if ev.end_date else (ev.start_date or "")
                     d_item = self.scene.addText(_elide_to_width(date_text, text_width), d_font)
@@ -305,14 +312,11 @@ class PrettyTimelineView(QGraphicsView):
                     d_item.setPos(text_left, next_y)
                     next_y += 20
 
-                # Description (LOD)
-                if L.get("show_desc", False):
+                if Lcur.get("show_desc", False):
                     desc_font = QFont(self._font); desc_font.setPointSize(10)
-                    if L.get("wrap_desc", False):
-                        desc = self.scene.addText("")
+                    if Lcur.get("wrap_desc", False):
+                        desc = self.scene.addText(_elide_to_width(ev.description or "", text_width))
                         desc.setDefaultTextColor(DESC_COLOR)
-                        desc.setFont(desc_font)
-                        desc.setPlainText(ev.description or "")
                         desc.setPos(text_left, next_y)
                     else:
                         desc_text = _elide_to_width(ev.description or "", text_width)
@@ -320,30 +324,78 @@ class PrettyTimelineView(QGraphicsView):
                         desc.setDefaultTextColor(DESC_COLOR)
                         desc.setPos(text_left, next_y)
 
-                # Character chips — show color swatch + name (not just initials)
+                # Character chips: visa character-streckgubbe (bild som huvud + ring i färg) + namn
                 cx = rect.right() - padding - 12
                 cy = rect.top() + padding + 10
-                # We'll place chips from right to left. For each chip render swatch + name.
-                for name in (ev.characters or [])[: L["max_chips"]]:
-                    ch = char_by_name.get(name, Character(name=name, color="#888"))
-                    col = QColor(ch.color)
-                    # draw swatch (circle)
-                    sw_size = 14
-                    sw_rect = QRectF(cx - sw_size, cy - sw_size/2, sw_size, sw_size)
-                    _add_rounded_rect(self.scene, sw_rect, sw_size/2, QPen(QColor(0,0,0,30)), QBrush(col)).setZValue(16)
-                    # draw name to left of swatch
+                for name in (ev.characters or [])[: Lcur["max_chips"]]:
+                    ch = char_by_name.get(name, None)
+                    # avatar (head) size
+                    avatar_size = 18
+                    avatar_rect = QRectF(cx - avatar_size, cy - avatar_size/2, avatar_size, avatar_size)
+
+                    # white circular background for head
+                    _add_rounded_rect(self.scene, avatar_rect, avatar_size/2, QPen(QColor(0,0,0,20)), QBrush(Qt.white)).setZValue(16)
+
+                    # draw character image inside head if exists
+                    if ch and getattr(ch, "images", None):
+                        ch_img = _first_existing_image(ch.images)
+                        if ch_img:
+                            pm = QPixmap(ch_img)
+                            if not pm.isNull():
+                                inner = avatar_rect.adjusted(2, 2, -2, -2)
+                                pm = pm.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                                px = inner.left() + (inner.width() - pm.width()) / 2
+                                py = inner.top() + (inner.height() - pm.height()) / 2
+                                pm_item = self.scene.addPixmap(pm)
+                                pm_item.setPos(px, py)
+                                pm_item.setZValue(17)
+
+                    # colored ring in character's color
+                    sw_col = QColor("#888")
+                    if ch:
+                        try:
+                            sw_col = QColor(ch.color)
+                        except Exception:
+                            sw_col = QColor("#888")
+                    ring = _add_rounded_rect(self.scene, avatar_rect, avatar_size/2, QPen(sw_col, 1.6), QBrush(Qt.NoBrush))
+                    ring.setZValue(18)
+
+                    # Draw stick figure body under head (simple lines)
+                    # neck start = bottom center of head
+                    neck_x = avatar_rect.left() + avatar_rect.width() / 2
+                    neck_y = avatar_rect.bottom() + 1
+                    body_length = 12
+                    body_x = neck_x
+                    body_y = neck_y + body_length
+
+                    pen = QPen(QColor(60, 60, 60), 1.4, Qt.SolidLine)
+                    # neck
+                    self.scene.addLine(neck_x, neck_y, neck_x, neck_y + 3, pen).setZValue(18)
+                    # body
+                    self.scene.addLine(neck_x, neck_y + 3, body_x, body_y, pen).setZValue(18)
+                    # arms (one line across mid-body)
+                    arm_y = neck_y + 6
+                    arm_len = 8
+                    self.scene.addLine(body_x - arm_len, arm_y, body_x + arm_len, arm_y, pen).setZValue(18)
+                    # legs
+                    leg_y = body_y
+                    leg_len_x = 6
+                    leg_len_y = 10
+                    self.scene.addLine(body_x, leg_y, body_x - leg_len_x, leg_y + leg_len_y, pen).setZValue(18)
+                    self.scene.addLine(body_x, leg_y, body_x + leg_len_x, leg_y + leg_len_y, pen).setZValue(18)
+
+                    # draw name left of the stick figure
                     name_font = QFont(self._font.family(), 9)
-                    # approximate width allowed for the name
                     max_name_px = 100
                     display = _elide_to_width(name, max_name_px)
+                    name_item_w = min(max_name_px, len(display) * 7)
                     name_item = self.scene.addText(display, name_font)
                     name_item.setDefaultTextColor(CHIP_TEXT)
-                    # place name left of swatch, small padding
-                    name_item_w = min(max_name_px, len(display) * 7)
-                    name_item.setPos(sw_rect.left() - 6 - name_item_w, sw_rect.top() - 6)
-                    name_item.setZValue(16)
-                    # move cx left for next chip: include name width + swatch + spacing
-                    cx = sw_rect.left() - 8 - name_item_w
+                    name_item.setPos(avatar_rect.left() - 6 - name_item_w, avatar_rect.top() - 6)
+                    name_item.setZValue(18)
+
+                    # move cx left for next chip: include name width + avatar + spacing
+                    cx = avatar_rect.left() - 8 - name_item_w
 
     def zoom_in(self):
         step = 1.25
@@ -427,7 +479,6 @@ class TimelineTab(QWidget):
         with QSignalBlocker(self.char_filter):
             self.char_filter.clear()
             for c in self._get_characters():
-                # add simple text item (keeps filter compact)
                 self.char_filter.addItem(QListWidgetItem(c.name))
         with QSignalBlocker(self.place_filter):
             self.place_filter.clear()

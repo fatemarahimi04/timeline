@@ -5,7 +5,9 @@
       "description": "det är jag",
       "color": "#FFE08A",
       "texts": [],
-      "images": []
+      "images": [
+        "pictures\\0.jpg"
+      ]
     },
     {
       "name": "aseel",
@@ -54,9 +56,7 @@
       "description": "jag pluggar nu",
       "start_date": "2025-10-20",
       "end_date": "2025-10-24",
-      "images": [
-        "pictures\\0.jpg"
-      ],
+      "images": [],
       "characters": [
         "fatema"
       ],
