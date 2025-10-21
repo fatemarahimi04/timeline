@@ -93,15 +93,6 @@ class PrettyTimelineView(QGraphicsView):
     def minimumSizeHint(self) -> QSize:
         return QSize(400, 300)
 
-    def mouseDoubleClickEvent(self, event):
-        if self._lod().get("title_mode") != "full":
-            step = 1.35
-            self.scale(step, step)
-            self.scale_factor *= step
-            self.refresh()
-        else:
-            super().mouseDoubleClickEvent(event)
-
     def _lod(self):
         z = self.scale_factor
         if z < 0.95:
@@ -242,6 +233,9 @@ class PrettyTimelineView(QGraphicsView):
                 x = x_for(sdt)
                 y_center = TOP_MARGIN + row_idx * ROW_H + ROW_H / 2
 
+                raw_left = x - L["event_w"] / 2 if (L := self._lod()) else x - EVENT_W_LOCAL / 2
+                # fallback values
+                L = L if isinstance(L, dict) else self._lod()
                 raw_left = x - L["event_w"] / 2
                 min_left = LEFT_MARGIN
                 max_left = scene_w - 60 - L["event_w"]
@@ -297,7 +291,7 @@ class PrettyTimelineView(QGraphicsView):
                         t_item = self.scene.addText("")
                         t_item.setDefaultTextColor(TITLE_COLOR)
                         t_item.setFont(title_font)
-                        t_item.setTextWidth(text_width)
+                        # if QGraphicsSimpleTextItem / QGraphicsTextItem behavior differs, fallback to addText
                         t_item.setPlainText(ev.title or "")
                         t_item.setPos(text_left, base_y)
                         next_y = base_y + 24
@@ -318,7 +312,6 @@ class PrettyTimelineView(QGraphicsView):
                         desc = self.scene.addText("")
                         desc.setDefaultTextColor(DESC_COLOR)
                         desc.setFont(desc_font)
-                        desc.setTextWidth(text_width)
                         desc.setPlainText(ev.description or "")
                         desc.setPos(text_left, next_y)
                     else:
@@ -327,30 +320,30 @@ class PrettyTimelineView(QGraphicsView):
                         desc.setDefaultTextColor(DESC_COLOR)
                         desc.setPos(text_left, next_y)
 
-                # Character chips (med bilder om finns)
+                # Character chips — show color swatch + name (not just initials)
                 cx = rect.right() - padding - 12
                 cy = rect.top() + padding + 10
+                # We'll place chips from right to left. For each chip render swatch + name.
                 for name in (ev.characters or [])[: L["max_chips"]]:
-                    ch = char_by_name.get(name, Character(name="", color="#888"))
-                    ch_img = _first_existing_image(getattr(ch, "images", []))
-
-                    if ch_img:
-                        chip_rect = QRectF(cx - 9, cy - 9, 18, 18)
-                        _add_rounded_rect(self.scene, chip_rect, 9, QPen(QColor(0,0,0,30)), QBrush(Qt.white))
-                        pm = QPixmap(ch_img)
-                        if not pm.isNull():
-                            inner = chip_rect.adjusted(2, 2, -2, -2)
-                            pm = pm.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-                            pm_item = self.scene.addPixmap(pm)
-                            pm_item.setPos(inner.left(), inner.top())
-                    else:
-                        self.scene.addEllipse(cx - 8, cy - 8, 16, 16, QPen(Qt.NoPen), QBrush(QColor(ch.color)))
-                        initials = (name.strip()[:1] or " ").upper()
-                        chip_txt = self.scene.addText(initials, QFont(self._font.family(), 8))
-                        chip_txt.setDefaultTextColor(CHIP_TEXT)
-                        chip_txt.setPos(cx - 5, cy - 10)
-
-                    cx -= 18
+                    ch = char_by_name.get(name, Character(name=name, color="#888"))
+                    col = QColor(ch.color)
+                    # draw swatch (circle)
+                    sw_size = 14
+                    sw_rect = QRectF(cx - sw_size, cy - sw_size/2, sw_size, sw_size)
+                    _add_rounded_rect(self.scene, sw_rect, sw_size/2, QPen(QColor(0,0,0,30)), QBrush(col)).setZValue(16)
+                    # draw name to left of swatch
+                    name_font = QFont(self._font.family(), 9)
+                    # approximate width allowed for the name
+                    max_name_px = 100
+                    display = _elide_to_width(name, max_name_px)
+                    name_item = self.scene.addText(display, name_font)
+                    name_item.setDefaultTextColor(CHIP_TEXT)
+                    # place name left of swatch, small padding
+                    name_item_w = min(max_name_px, len(display) * 7)
+                    name_item.setPos(sw_rect.left() - 6 - name_item_w, sw_rect.top() - 6)
+                    name_item.setZValue(16)
+                    # move cx left for next chip: include name width + swatch + spacing
+                    cx = sw_rect.left() - 8 - name_item_w
 
     def zoom_in(self):
         step = 1.25
@@ -434,6 +427,7 @@ class TimelineTab(QWidget):
         with QSignalBlocker(self.char_filter):
             self.char_filter.clear()
             for c in self._get_characters():
+                # add simple text item (keeps filter compact)
                 self.char_filter.addItem(QListWidgetItem(c.name))
         with QSignalBlocker(self.place_filter):
             self.place_filter.clear()

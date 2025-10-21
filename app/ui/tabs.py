@@ -3,12 +3,13 @@ from dataclasses import asdict
 from typing import List
 import os
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, QSize
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QLineEdit, QTextEdit, QPushButton, QLabel, QMessageBox,
     QFileDialog, QDialog, QDialogButtonBox, QComboBox
 )
+from PySide6.QtGui import QColor, QPixmap, QIcon
 
 from ..models import Character, Place, Event
 
@@ -33,10 +34,17 @@ class CharacterForm(QDialog):
         self.name_edit = QLineEdit()
         self.desc_edit = QTextEdit()
 
-        # Förvald färg via ComboBox (inte QColorDialog)
+        # Förvald färg via ComboBox (visar en färgruta som ikon)
         self.color_combo = QComboBox()
+        # ikonstorlek så färgrutan syns i dropdown och i vald rad
+        self.color_combo.setIconSize(QSize(16, 16))
         for label, hexcode in PALETTE:
-            self.color_combo.addItem(label, hexcode)
+            # skapa liten pixmap fylld med färg för att använda som ikon
+            pix = QPixmap(16, 16)
+            pix.fill(QColor(hexcode))
+            icon = QIcon(pix)
+            # lägg till item med icon, textrubrik och userData = hexkod
+            self.color_combo.addItem(icon, label, hexcode)
 
         # Images
         self.images_list = QListWidget()
@@ -61,8 +69,10 @@ class CharacterForm(QDialog):
         if character:
             self.name_edit.setText(character.name)
             self.desc_edit.setPlainText(character.description)
-            # välj rätt färg i listan
-            idx = max(0, self.color_combo.findData(character.color))
+            # välj rätt färg i listan (sök på userData = hexkod)
+            idx = self.color_combo.findData(character.color)
+            if idx == -1:
+                idx = 0
             self.color_combo.setCurrentIndex(idx)
             for img in getattr(character, "images", []):
                 self.images_list.addItem(img)
