@@ -1,4 +1,4 @@
-# Uppdaterad timeline: plats-avatarer + character-streckgubbar på chips
+# Timeline view — förbättrad avatar-layout (inga tomma cirklar, korrekt reserverat utrymme, +N badge)
 from __future__ import annotations
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
@@ -25,6 +25,10 @@ X_STEP_MIN      = 210
 PLACE_PILL_HEIGHT = 36
 PLACE_AVATAR_SIZE = 28
 PLACE_PILL_PADDING = 10
+
+# Default character-avatar size in event card
+DEFAULT_CHAR_AVATAR = 26  # justera om du vill ha större/mindre
+AVATAR_SPACING = 8        # mellan avatars
 
 BG_COLOR        = QColor("#F7F8FB")
 PANEL_COLOR     = QColor("#FFFFFF")
@@ -54,7 +58,7 @@ def _parse_date(s: str) -> Optional[datetime]:
         return None
     try:
         return datetime.strptime(s, "%Y-%m-%d")
-    except ValueError:
+    except Exception:
         return None
 
 def _elide(text: str, max_chars: int) -> str:
@@ -70,6 +74,8 @@ def _elide_to_width(text: str, px_width: int, approx_char_px: int = 7) -> str:
 
 def _first_existing_image(paths: List[str]) -> Optional[str]:
     for p in paths or []:
+        if not p:
+            continue
         if not os.path.isabs(p):
             p = os.path.join(os.getcwd(), p)
         if os.path.exists(p):
@@ -87,6 +93,7 @@ class PrettyTimelineView(QGraphicsView):
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
 
+        # korrekt hint
         self.setRenderHint(QPainter.Antialiasing, True)
         self.setDragMode(QGraphicsView.ScrollHandDrag)
         self.setBackgroundBrush(QBrush(BG_COLOR))
@@ -105,42 +112,33 @@ class PrettyTimelineView(QGraphicsView):
             return {
                 "tick_days": 28,
                 "date_fmt": "%Y-%m",
-                "show_image": True,
                 "thumb": 44,
                 "title_mode": "none",
                 "show_date": False,
                 "show_desc": False,
-                "wrap_desc": False,
                 "max_chips": 0,
-                "event_w": 220,
                 "event_h": 72,
             }
         elif z < 1.20:
             return {
                 "tick_days": 7,
                 "date_fmt": "%Y-%m-%d",
-                "show_image": True,
                 "thumb": 52,
                 "title_mode": "abbr3",
                 "show_date": True,
                 "show_desc": False,
-                "wrap_desc": False,
                 "max_chips": 2,
-                "event_w": 250,
                 "event_h": 86,
             }
         else:
             return {
                 "tick_days": 3,
                 "date_fmt": "%Y-%m-%d",
-                "show_image": True,
                 "thumb": 68,
                 "title_mode": "full",
                 "show_date": True,
                 "show_desc": True,
-                "wrap_desc": True,
                 "max_chips": 4,
-                "event_w": 310,
                 "event_h": 108,
             }
 
@@ -152,11 +150,18 @@ class PrettyTimelineView(QGraphicsView):
 
         L = self._lod()
         char_by_name: Dict[str, Character] = {c.name: c for c in characters}
-        dates = sorted({_parse_date(e.start_date) for e in events if e.start_date})
-        dates = [d for d in dates if d]
+
+        # build dates including end dates so scale accounts for spans
+        dates = []
+        for e in events:
+            s = _parse_date(getattr(e, "start_date", "") or "")
+            if s: dates.append(s)
+            t = _parse_date(getattr(e, "end_date", "") or "")
+            if t: dates.append(t)
+        dates = sorted(dates)
 
         vp_w = max(1000, self.viewport().width())
-        vp_h = max(600,  self.viewport().height())
+        vp_h = max(600, self.viewport().height())
 
         if not places or not dates:
             self.scene.setSceneRect(0, 0, vp_w, vp_h)
@@ -166,13 +171,14 @@ class PrettyTimelineView(QGraphicsView):
             return
 
         dmin, dmax = min(dates), max(dates)
-        dmin = dmin - timedelta(days=1)
-        dmax = dmax + timedelta(days=1)
+        # liten padding
+        dmin = dmin - timedelta(days=0.5)
+        dmax = dmax + timedelta(days=0.5)
 
         step_px = max(X_STEP_MIN, 140)
 
         def x_for(dt: datetime) -> float:
-            days = (dt - dmin).days
+            days = (dt - dmin).total_seconds() / 86400.0
             return LEFT_MARGIN + days * step_px / L["tick_days"]
 
         content_w = x_for(dmax) + 220
@@ -185,14 +191,14 @@ class PrettyTimelineView(QGraphicsView):
         panel_rect = QRectF(20, 20, scene_w - 40, scene_h - 40)
         _add_rounded_rect(self.scene, panel_rect, 16, QPen(PANEL_BORDER), QBrush(PANEL_COLOR))
 
-        # platsrader + pill + place-avatar (oförändrat från din favorit)
+        # draw places (unchanged, keeps your preferred layout)
         for i, p in enumerate(places):
             y = TOP_MARGIN + i * ROW_H
             line_y = y + ROW_H / 2
             self.scene.addLine(LEFT_MARGIN - 10, line_y, scene_w - 60, line_y, QPen(TIMELINE_COLOR, 3))
 
             pill_rect = QRectF(20, line_y - (PLACE_PILL_HEIGHT / 2), LEFT_MARGIN - 40, PLACE_PILL_HEIGHT)
-            _add_rounded_rect(self.scene, pill_rect, PLACE_PILL_HEIGHT/2, QPen(PLACE_PILL_STROKE), QBrush(PLACE_PILL_BG))
+            _add_rounded_rect(self.scene, pill_rect, PLACE_PILL_HEIGHT / 2, QPen(PLACE_PILL_STROKE), QBrush(PLACE_PILL_BG))
 
             p_img = _first_existing_image(getattr(p, "images", []))
             name_x = pill_rect.left() + PLACE_PILL_PADDING
@@ -201,7 +207,7 @@ class PrettyTimelineView(QGraphicsView):
                 avatar_rect = QRectF(pill_rect.left() + PLACE_PILL_PADDING,
                                      pill_rect.top() + (pill_rect.height() - avatar_size) / 2,
                                      avatar_size, avatar_size)
-                _add_rounded_rect(self.scene, avatar_rect, avatar_size / 2, QPen(QColor(0,0,0,20)), QBrush(Qt.white))
+                _add_rounded_rect(self.scene, avatar_rect, avatar_size / 2, QPen(QColor(0, 0, 0, 20)), QBrush(Qt.white))
                 pm = QPixmap(p_img)
                 if not pm.isNull():
                     inner = avatar_rect.adjusted(3, 3, -3, -3)
@@ -218,7 +224,7 @@ class PrettyTimelineView(QGraphicsView):
             name_item.setDefaultTextColor(Qt.black)
             name_item.setPos(name_x, pill_rect.top() + (pill_rect.height() - 14) / 2)
 
-        # datumtick
+        # ticks
         tick = dmin - timedelta(days=(dmin.weekday() % 7))
         while tick <= dmax:
             x = x_for(tick)
@@ -226,32 +232,46 @@ class PrettyTimelineView(QGraphicsView):
                 self.scene.addLine(x, TOP_MARGIN - 30, x, scene_h - 60, QPen(AXIS_COLOR, 1, Qt.DashLine))
                 txt = self.scene.addText(tick.strftime(L["date_fmt"]), self._font)
                 txt.setDefaultTextColor(QColor(120, 120, 130))
-                txt.setPos(x - 40, TOP_MARGIN - 55)
+                txt.setPos(x - 35, TOP_MARGIN - 55)
             tick += timedelta(days=L["tick_days"])
 
-        # events (vist som kort)
+        # draw events: width is proportional to start->end; reserve avatar block before text
         for ev in events:
-            sdt = _parse_date(ev.start_date)
+            sdt = _parse_date(getattr(ev, "start_date", "") or "")
+            edt = _parse_date(getattr(ev, "end_date", "") or "") or sdt
             if not sdt:
                 continue
+            if edt < sdt:
+                edt = sdt
+
+            x_start = x_for(sdt)
+            x_end = x_for(edt)
+            # ensure minimal width for visibility
+            day_px = (step_px / L["tick_days"])
+            min_width = max(36, int(day_px * 0.6))
+            raw_width = max(min_width, int(round(x_end - x_start)))
+            raw_left = x_start
+            # clamp horizontally
+            min_left = LEFT_MARGIN
+            max_left = scene_w - 60 - raw_width
+            rect_left = max(min_left, min(raw_left, max_left))
+            rect_width = raw_width
+            if rect_left + rect_width > scene_w - 60:
+                rect_width = max(16, int(scene_w - 60 - rect_left))
+
+            # draw per place
             for place_name in getattr(ev, "places", []) or [""]:
                 row_idx = next((i for i, pl in enumerate(places) if pl.name == place_name), None)
                 if row_idx is None:
                     continue
 
-                x = x_for(sdt)
+                ev_h = L["event_h"]
                 y_center = TOP_MARGIN + row_idx * ROW_H + ROW_H / 2
+                rect = QRectF(rect_left, y_center - ev_h / 2, rect_width, ev_h)
 
-                Lcur = L
-                raw_left = x - Lcur["event_w"] / 2
-                min_left = LEFT_MARGIN
-                max_left = scene_w - 60 - Lcur["event_w"]
-                rect_left = max(min_left, min(raw_left, max_left))
-                rect = QRectF(rect_left, y_center - Lcur["event_h"] / 2, Lcur["event_w"], Lcur["event_h"])
-
+                # shadow + card
                 shadow = QRectF(rect); shadow.translate(0, 4)
                 _add_rounded_rect(self.scene, shadow, EVENT_RADIUS, QPen(Qt.NoPen), QBrush(SHADOW_COLOR))
-
                 if ev.characters:
                     try:
                         base_col = QColor(char_by_name.get(ev.characters[0], Character(name="", color="#9aa")).color)
@@ -263,84 +283,67 @@ class PrettyTimelineView(QGraphicsView):
                     bg = QColor("#EFE7DE"); border = CARD_BORDER
                 _add_rounded_rect(self.scene, rect, EVENT_RADIUS, QPen(border, 1.6), QBrush(bg))
 
-                padding   = EVENT_PADDING
+                # --- reserve space for avatars on right BEFORE computing text width ---
+                max_chips = L.get("max_chips", 3)
+                avatar_count = len(ev.characters or [])
+                shown_avatars = min(avatar_count, max_chips)
+                avatar_block_width = 0
+                if shown_avatars > 0:
+                    avatar_block_width = shown_avatars * DEFAULT_CHAR_AVATAR + (shown_avatars - 1) * AVATAR_SPACING
+                # reserve a bit extra for padding
+                avatar_block_width += EVENT_PADDING
+
+                # compute text area considering avatar block
+                padding = EVENT_PADDING
                 text_left = rect.left() + padding
-
-                # event-thumbnail (oförändrat)
-                imgp = _first_existing_image(ev.images) if (Lcur["show_image"] and ev.images) else None
-                if imgp and Lcur["thumb"] > 0:
-                    frame = QRectF(rect.left() + padding,
-                                   rect.top()  + (Lcur["event_h"] - Lcur["thumb"]) / 2,
-                                   Lcur["thumb"], Lcur["thumb"])
-                    _add_rounded_rect(self.scene, frame, 8, QPen(QColor(0,0,0,30)), QBrush(Qt.white))
-                    pix = QPixmap(imgp)
-                    if not pix.isNull():
-                        inner = frame.adjusted(4, 4, -4, -4)
-                        pix = pix.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                        pm_item = self.scene.addPixmap(pix)
-                        px = inner.left() + (inner.width() - pix.width()) / 2
-                        py = inner.top() + (inner.height() - pix.height()) / 2
-                        pm_item.setPos(px, py)
-                    text_left = frame.right() + 10
-
-                text_right = rect.right() - (padding + 12)
+                text_right = rect.right() - (padding + 8 + avatar_block_width)
                 text_width = max(10, int(text_right - text_left))
 
-                base_y   = rect.top() + 10
-                next_y   = base_y
+                base_y = rect.top() + 12
+                next_y = base_y
 
-                title_mode = Lcur.get("title_mode", "full")
-                if title_mode != "none":
+                # Title
+                title_mode = L.get("title_mode", "full")
+                if title_mode != "none" and text_width >= 40:
                     title_font = QFont(self._font); title_font.setPointSize(12); title_font.setBold(True)
-                    if title_mode == "abbr3":
-                        title_str = (ev.title or "").strip()[:3].upper()
-                        t_item = self.scene.addText(_elide_to_width(title_str, text_width), title_font)
-                        t_item.setDefaultTextColor(TITLE_COLOR)
-                        t_item.setPos(text_left, base_y)
-                        next_y = base_y + 22
-                    else:
-                        t_item = self.scene.addText(_elide_to_width(ev.title or "", text_width), title_font)
-                        t_item.setDefaultTextColor(TITLE_COLOR)
-                        t_item.setPos(text_left, base_y)
-                        next_y = base_y + 24
+                    title_text = ev.title or ""
+                    title_text = _elide_to_width(title_text, text_width)
+                    t_item = self.scene.addText(title_text, title_font)
+                    t_item.setDefaultTextColor(TITLE_COLOR)
+                    t_item.setPos(text_left, next_y)
+                    next_y += 22
 
-                if Lcur.get("show_date", False):
-                    d_font = QFont(self._font); d_font.setPointSize(10)
+                # Date
+                if L.get("show_date", True) and text_width >= 80:
+                    date_font = QFont(self._font); date_font.setPointSize(10)
                     date_text = f"{ev.start_date} – {ev.end_date}" if ev.end_date else (ev.start_date or "")
-                    d_item = self.scene.addText(_elide_to_width(date_text, text_width), d_font)
+                    date_text = _elide_to_width(date_text, text_width)
+                    d_item = self.scene.addText(date_text, date_font)
                     d_item.setDefaultTextColor(DATE_COLOR)
                     d_item.setPos(text_left, next_y)
                     next_y += 20
 
-                if Lcur.get("show_desc", False):
+                # Description
+                if L.get("show_desc", True) and text_width >= 140:
                     desc_font = QFont(self._font); desc_font.setPointSize(10)
-                    if Lcur.get("wrap_desc", False):
-                        desc = self.scene.addText(_elide_to_width(ev.description or "", text_width))
-                        desc.setDefaultTextColor(DESC_COLOR)
-                        desc.setPos(text_left, next_y)
-                    else:
-                        desc_text = _elide_to_width(ev.description or "", text_width)
-                        desc = self.scene.addText(desc_text, desc_font)
-                        desc.setDefaultTextColor(DESC_COLOR)
-                        desc.setPos(text_left, next_y)
+                    desc_text = _elide_to_width(ev.description or "", text_width)
+                    desc_item = self.scene.addText(desc_text, desc_font)
+                    desc_item.setDefaultTextColor(DESC_COLOR)
+                    desc_item.setPos(text_left, next_y)
+                    next_y += 20
 
-                # Character chips: visa character-streckgubbe (bild som huvud + ring i färg) + namn
-                cx = rect.right() - padding - 12
-                cy = rect.top() + padding + 10
-                for name in (ev.characters or [])[: Lcur["max_chips"]]:
+                # ----- draw avatars block at top-right inside card -----
+                cx = rect.right() - padding - DEFAULT_CHAR_AVATAR
+                cy = rect.top() + 8
+                for idx, name in enumerate((ev.characters or [])[:shown_avatars]):
                     ch = char_by_name.get(name, None)
-                    # avatar (head) size
-                    avatar_size = 18
-                    avatar_rect = QRectF(cx - avatar_size, cy - avatar_size/2, avatar_size, avatar_size)
-
-                    # white circular background for head
-                    _add_rounded_rect(self.scene, avatar_rect, avatar_size/2, QPen(QColor(0,0,0,20)), QBrush(Qt.white)).setZValue(16)
-
-                    # draw character image inside head if exists
+                    avatar_rect = QRectF(cx, cy, DEFAULT_CHAR_AVATAR, DEFAULT_CHAR_AVATAR)
+                    _add_rounded_rect(self.scene, avatar_rect, DEFAULT_CHAR_AVATAR/2, QPen(QColor(0,0,0,12)), QBrush(Qt.white)).setZValue(30)
+                    drew_image = False
                     if ch and getattr(ch, "images", None):
-                        ch_img = _first_existing_image(ch.images)
-                        if ch_img:
-                            pm = QPixmap(ch_img)
+                        img = _first_existing_image(ch.images)
+                        if img:
+                            pm = QPixmap(img)
                             if not pm.isNull():
                                 inner = avatar_rect.adjusted(2, 2, -2, -2)
                                 pm = pm.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatio, Qt.SmoothTransformation)
@@ -348,77 +351,48 @@ class PrettyTimelineView(QGraphicsView):
                                 py = inner.top() + (inner.height() - pm.height()) / 2
                                 pm_item = self.scene.addPixmap(pm)
                                 pm_item.setPos(px, py)
-                                pm_item.setZValue(17)
-
-                    # colored ring in character's color
-                    sw_col = QColor("#888")
+                                pm_item.setZValue(32)
+                                drew_image = True
+                    if not drew_image:
+                        fill_col = QColor("#cccccc")
+                        if ch:
+                            try:
+                                fill_col = QColor(ch.color)
+                            except Exception:
+                                fill_col = QColor("#cccccc")
+                        _add_rounded_rect(self.scene, avatar_rect, DEFAULT_CHAR_AVATAR/2, QPen(Qt.NoPen), QBrush(fill_col)).setZValue(31)
+                    ring_col = QColor("#888")
                     if ch:
                         try:
-                            sw_col = QColor(ch.color)
+                            ring_col = QColor(ch.color)
                         except Exception:
-                            sw_col = QColor("#888")
-                    ring = _add_rounded_rect(self.scene, avatar_rect, avatar_size/2, QPen(sw_col, 1.6), QBrush(Qt.NoBrush))
-                    ring.setZValue(18)
+                            ring_col = QColor("#888")
+                    _add_rounded_rect(self.scene, avatar_rect, DEFAULT_CHAR_AVATAR/2, QPen(ring_col, 1.6), QBrush(Qt.NoBrush)).setZValue(33)
 
-                    # Draw stick figure body under head (simple lines)
-                    # neck start = bottom center of head
-                    neck_x = avatar_rect.left() + avatar_rect.width() / 2
-                    neck_y = avatar_rect.bottom() + 1
-                    body_length = 12
-                    body_x = neck_x
-                    body_y = neck_y + body_length
+                    cx -= (DEFAULT_CHAR_AVATAR + AVATAR_SPACING)
 
-                    pen = QPen(QColor(60, 60, 60), 1.4, Qt.SolidLine)
-                    # neck
-                    self.scene.addLine(neck_x, neck_y, neck_x, neck_y + 3, pen).setZValue(18)
-                    # body
-                    self.scene.addLine(neck_x, neck_y + 3, body_x, body_y, pen).setZValue(18)
-                    # arms (one line across mid-body)
-                    arm_y = neck_y + 6
-                    arm_len = 8
-                    self.scene.addLine(body_x - arm_len, arm_y, body_x + arm_len, arm_y, pen).setZValue(18)
-                    # legs
-                    leg_y = body_y
-                    leg_len_x = 6
-                    leg_len_y = 10
-                    self.scene.addLine(body_x, leg_y, body_x - leg_len_x, leg_y + leg_len_y, pen).setZValue(18)
-                    self.scene.addLine(body_x, leg_y, body_x + leg_len_x, leg_y + leg_len_y, pen).setZValue(18)
+                if avatar_count > shown_avatars:
+                    more = avatar_count - shown_avatars
+                    badge_w = 26
+                    badge_h = DEFAULT_CHAR_AVATAR
+                    badge_rect = QRectF(cx + AVATAR_SPACING, cy, badge_w, badge_h)
+                    _add_rounded_rect(self.scene, badge_rect, badge_h/2, QPen(QColor(0,0,0,10)), QBrush(QColor(255,255,255,200))).setZValue(34)
+                    nm = f"+{more}"
+                    b_font = QFont(self._font.family(), 9)
+                    txt = self.scene.addText(nm, b_font)
+                    txt.setDefaultTextColor(CHIP_TEXT)
+                    txt.setPos(badge_rect.left() + 6, badge_rect.top() + (badge_h - 12)/2)
+                    txt.setZValue(35)
 
-                    # draw name left of the stick figure
-                    name_font = QFont(self._font.family(), 9)
-                    max_name_px = 100
-                    display = _elide_to_width(name, max_name_px)
-                    name_item_w = min(max_name_px, len(display) * 7)
-                    name_item = self.scene.addText(display, name_font)
-                    name_item.setDefaultTextColor(CHIP_TEXT)
-                    name_item.setPos(avatar_rect.left() - 6 - name_item_w, avatar_rect.top() - 6)
-                    name_item.setZValue(18)
+                # subtle start/end markers
+                start_x = x_for(sdt)
+                end_x = x_for(edt)
+                if LEFT_MARGIN - 10 <= start_x <= scene_w - 60:
+                    self.scene.addLine(start_x, rect.top() - 6, start_x, rect.bottom() + 6, QPen(QColor(80,80,90,40), 1, Qt.DashLine)).setZValue(5)
+                if LEFT_MARGIN - 10 <= end_x <= scene_w - 60:
+                    self.scene.addLine(end_x, rect.top() - 6, end_x, rect.bottom() + 6, QPen(QColor(80,80,90,40), 1, Qt.DashLine)).setZValue(5)
 
-                    # move cx left for next chip: include name width + avatar + spacing
-                    cx = avatar_rect.left() - 8 - name_item_w
 
-    def zoom_in(self):
-        step = 1.25
-        self.scale(step, step)
-        self.scale_factor *= step
-        self.refresh()
-
-    def zoom_out(self):
-        step = 1.25
-        self.scale(1/step, 1/step)
-        self.scale_factor /= step
-        self.refresh()
-
-    def wheelEvent(self, event):
-        if event.modifiers() == Qt.ControlModifier:
-            if event.angleDelta().y() > 0:
-                self.zoom_in()
-            else:
-                self.zoom_out()
-        else:
-            super().wheelEvent(event)
-
-# ---- Tab with filters + splitter ----
 class TimelineTab(QWidget):
     def __init__(self, get_events_fn, get_characters_fn, get_places_fn):
         super().__init__()
@@ -440,6 +414,7 @@ class TimelineTab(QWidget):
 
         self.graph = PrettyTimelineView(self._get_events_filtered, self._get_characters, self._get_places)
 
+        # controls container (som kan läggas i en splitter)
         controls = QWidget()
         controls_layout = QVBoxLayout(controls)
         left = QVBoxLayout(); left.addWidget(QLabel("Characters:")); left.addWidget(self.char_filter)
@@ -448,7 +423,14 @@ class TimelineTab(QWidget):
         right.addWidget(QLabel("To:")); right.addWidget(self.date_to)
         row1 = QHBoxLayout(); row1.addLayout(left, 2); row1.addLayout(mid, 2); row1.addLayout(right, 1)
         controls_layout.addLayout(row1)
+
         row2 = QHBoxLayout()
+        # connect Apply directly to graph.refresh to avoid potential bound-method issues during init
+        self.apply_btn.clicked.connect(self.graph.refresh)          # type: ignore
+        self.clear_btn.clicked.connect(self._clear_filters)         # type: ignore
+        self.zoomin_btn.clicked.connect(self.graph.zoom_in)         # type: ignore
+        self.zoomout_btn.clicked.connect(self.graph.zoom_out)       # type: ignore
+
         row2.addWidget(self.apply_btn); row2.addWidget(self.clear_btn); row2.addWidget(self.auto_dates)
         row2.addStretch(1); row2.addWidget(self.zoomin_btn); row2.addWidget(self.zoomout_btn)
         controls_layout.addLayout(row2)
@@ -458,21 +440,21 @@ class TimelineTab(QWidget):
         splitter.addWidget(self.graph)
         splitter.setCollapsible(0, False)
         splitter.setCollapsible(1, False)
-        splitter.setSizes([220, 600])
+        splitter.setSizes([220, 600])  # initial fördelning
 
         root = QVBoxLayout(self)
         root.addWidget(splitter)
 
+        # populate + defaults
         self._populate_filters()
         self._init_date_defaults()
 
-        self.apply_btn.clicked.connect(self.refresh)
-        self.clear_btn.clicked.connect(self._clear_filters)
-        self.zoomin_btn.clicked.connect(self.graph.zoom_in)
-        self.zoomout_btn.clicked.connect(self.graph.zoom_out)
-        self.char_filter.itemSelectionChanged.connect(self._maybe_auto_dates)
-        self.place_filter.itemSelectionChanged.connect(self._maybe_auto_dates)
+        # signals
+        # Keep the itemSelectionChanged handlers as before
+        self.char_filter.itemSelectionChanged.connect(self._maybe_auto_dates)   # type: ignore
+        self.place_filter.itemSelectionChanged.connect(self._maybe_auto_dates)  # type: ignore
 
+        # initial render
         self.graph.refresh()
 
     def _populate_filters(self):
@@ -539,6 +521,9 @@ class TimelineTab(QWidget):
                 continue
             if (not sel_chars or set(e.characters) & sel_chars) and (not sel_places or set(e.places) & sel_places):
                 dts.append(d)
+                ed = _parse_date(e.end_date)
+                if ed:
+                    dts.append(ed)
         with QSignalBlocker(self.date_from), QSignalBlocker(self.date_to):
             if dts:
                 self.date_from.setDate(QDate.fromString(min(dts).strftime("%Y-%m-%d"), "yyyy-MM-dd"))
@@ -547,14 +532,20 @@ class TimelineTab(QWidget):
                 today = QDate.currentDate()
                 self.date_from.setDate(today)
                 self.date_to.setDate(today)
+        # refresh the graph after auto-date change
         self.graph.refresh()
 
     def _clear_filters(self):
         self.char_filter.clearSelection()
         self.place_filter.clearSelection()
         self._init_date_defaults()
-        self.refresh()
+        # refresh view
+        self.graph.refresh()
 
     def refresh(self):
+        """
+        Public refresh method kept for external callers (main.py connects to this).
+        It repopulates filter lists and refreshes the graph.
+        """
         self._populate_filters()
         self.graph.refresh()

@@ -3,7 +3,7 @@
     {
       "name": "fatema",
       "description": "det är jag",
-      "color": "#FFE08A",
+      "color": "#EF4444",
       "texts": [],
       "images": [
         "pictures\\0.jpg"
@@ -54,9 +54,11 @@
     {
       "title": "pluggar",
       "description": "jag pluggar nu",
-      "start_date": "2025-10-20",
-      "end_date": "2025-10-24",
-      "images": [],
+      "start_date": "2025-10-01",
+      "end_date": "2025-10-06",
+      "images": [
+        "pictures\\0.jpg"
+      ],
       "characters": [
         "fatema"
       ],
@@ -67,8 +69,8 @@
     {
       "title": "jobbar",
       "description": "aseel jobbar nu",
-      "start_date": "2025-10-13",
-      "end_date": "2025-10-24",
+      "start_date": "2025-10-06",
+      "end_date": "2025-10-13",
       "images": [
         "pictures\\Screenshot 2025-10-07 162118.png"
       ],
@@ -82,11 +84,13 @@
     {
       "title": "blir arg",
       "description": "jae trött",
-      "start_date": "2025-10-20",
-      "end_date": "2025-10-20",
+      "start_date": "2025-11-13",
+      "end_date": "2025-11-16",
       "images": [],
       "characters": [
-        "fatema"
+        "fatema",
+        "aseel",
+        "vem"
       ],
       "places": [
         "hemma"
