@@ -36,17 +36,38 @@ class MainWindow(QWidget):
 
         QShortcut(QKeySequence("Ctrl+S"), self, activated=self._save_now)
 
-    def _load_state_into_ui(self, state):
+    def _load_state_into_ui(self, state):   
+        print("🟢 _load_state_into_ui start")  # 👈 lägg till
         self.tabs.clear()
 
         characters = [Character(**c) for c in state.get("characters", [])]
         places = [Place(**p) if not isinstance(p, Place) else p for p in state.get("places", [])]
         events = [Event(**e) for e in state.get("events", [])]
 
+        print(f"Characters: {len(characters)}, Places: {len(places)}, Events: {len(events)}")
+
         self.chars_tab = CharactersTab(characters)
         self.places_tab = PlacesTab(places)
         self.events_tab = EventsTab(events, characters=characters, places=places)
-        self.timeline_tab = TimelineTab(self.events_tab.values, self.chars_tab.values, self.places_tab.values)
+
+        print("🟡 Before TimelineTab...")
+        try:
+            self.timeline_tab = TimelineTab(
+                self.events_tab.values,
+                self.chars_tab.values,
+                self.places_tab.values
+            )
+            print("🟢 After TimelineTab!")
+        
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, "Timeline init error", str(e))
+            from PySide6.QtWidgets import QWidget
+            self.timeline_tab = QWidget()
+
+    
+
 
         
         self.chars_tab.data_changed.connect(self._update_events_characters)

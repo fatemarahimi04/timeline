@@ -118,6 +118,8 @@ class PrettyTimelineView(QGraphicsView):
         self._font = QFont("Segoe UI")
         self._font.setPointSize(10)
         self.setMouseTracking(True); self.viewport().setMouseTracking(True)
+        self._movers = []   # håller Python-referenser till EventCardItem
+
 
     def minimumSizeHint(self) -> QSize:
         return QSize(400, 300)
@@ -169,6 +171,7 @@ class PrettyTimelineView(QGraphicsView):
 
     def refresh(self):
         self.scene.clear()
+        self._movers.clear()
         events: List[Event] = self.get_events_fn()
         characters: List[Character] = self.get_characters_fn()
         places: List[Place] = self.get_places_fn()
@@ -276,8 +279,9 @@ class PrettyTimelineView(QGraphicsView):
             def itemChange(self, change, value):
                 if change == QGraphicsItem.ItemPositionChange:
                     new_pos: QPointF = value
-                    new_pos.setY(self.rect.top())  # lås Y till raden
+                    new_pos.setY(self.rect.top())  # lås Y
                     return new_pos
+
                 if change == QGraphicsItem.ItemPositionHasChanged:
                     try:
                         cx = self.pos().x() + self.rect.width()/2
@@ -295,7 +299,10 @@ class PrettyTimelineView(QGraphicsView):
                             self.parent_view.on_event_changed()
                     except Exception:
                         pass
+                    return value  # ✔️ räcker – anropa inte super här
+
                 return super().itemChange(change, value)
+
 
             # --- drop av karaktär ---
             def dragEnterEvent(self, e):
@@ -480,6 +487,8 @@ class PrettyTimelineView(QGraphicsView):
                 mover = EventCardItem(rect, ev, row_idx, self)
                 self.scene.addItem(mover)
                 mover.setPos(rect.left(), rect.top())
+                self._movers.append(mover)   # <-- VIKTIGT
+
 
 
     def zoom_in(self):
@@ -518,65 +527,87 @@ class TimelineTab(QWidget):
 
     def __init__(self, get_events_fn, get_characters_fn, get_places_fn):
         super().__init__()
+        print("🔵 TimelineTab init: start")
 
-        self.char_filter = QListWidget(); self.char_filter.setSelectionMode(QListWidget.MultiSelection)
-        self.char_filter.setDragEnabled(True)
-        self.place_filter = QListWidget(); self.place_filter.setSelectionMode(QListWidget.MultiSelection)
-        self.date_from = QDateEdit(); self.date_from.setCalendarPopup(True); self.date_from.setDisplayFormat("yyyy-MM-dd")
-        self.date_to   = QDateEdit(); self.date_to.setCalendarPopup(True);   self.date_to.setDisplayFormat("yyyy-MM-dd")
-        self.auto_dates = QCheckBox("Auto dates"); self.auto_dates.setChecked(True)
+        try:
+            self.char_filter = QListWidget()
+            self.char_filter.setSelectionMode(QListWidget.MultiSelection)
+            self.char_filter.setDragEnabled(True)
+            self.place_filter = QListWidget()
+            self.place_filter.setSelectionMode(QListWidget.MultiSelection)
+            self.date_from = QDateEdit()
+            self.date_from.setCalendarPopup(True)
+            self.date_from.setDisplayFormat("yyyy-MM-dd")
+            self.date_to = QDateEdit()
+            self.date_to.setCalendarPopup(True)
+            self.date_to.setDisplayFormat("yyyy-MM-dd")
+            self.auto_dates = QCheckBox("Auto dates")
+            self.auto_dates.setChecked(True)
 
-        self.apply_btn = QPushButton("Apply")
-        self.clear_btn = QPushButton("Clear")
-        self.zoomin_btn = QPushButton("+")
-        self.zoomout_btn = QPushButton("-")
+            self.apply_btn = QPushButton("Apply")
+            self.clear_btn = QPushButton("Clear")
+            self.zoomin_btn = QPushButton("+")
+            self.zoomout_btn = QPushButton("-")
 
-        self._get_events_raw = get_events_fn
-        self._get_characters = get_characters_fn
-        self._get_places     = get_places_fn
+            self._get_events_raw = get_events_fn
+            self._get_characters = get_characters_fn
+            self._get_places     = get_places_fn
 
-        self.graph = PrettyTimelineView(
-            self._get_events_filtered,
-            self._get_characters,
-            self._get_places,
-            on_event_changed=self._on_event_changed,
-            on_character_dropped=self._on_character_dropped
-        )
+            print("🔵 TimelineTab init: creating PrettyTimelineView...")
+            self.graph = PrettyTimelineView(
+                self._get_events_filtered,
+                self._get_characters,
+                self._get_places,
+                on_event_changed=self._on_event_changed,
+                on_character_dropped=self._on_character_dropped
+            )
+            print("🔵 TimelineTab init: PrettyTimelineView created")
 
-        controls = QWidget()
-        controls_layout = QVBoxLayout(controls)
-        left = QVBoxLayout(); left.addWidget(QLabel("Characters:")); left.addWidget(self.char_filter)
-        mid  = QVBoxLayout();  mid.addWidget(QLabel("Places:"));     mid.addWidget(self.place_filter)
-        right= QVBoxLayout();  right.addWidget(QLabel("From:"));     right.addWidget(self.date_from)
-        right.addWidget(QLabel("To:")); right.addWidget(self.date_to)
-        row1 = QHBoxLayout(); row1.addLayout(left, 2); row1.addLayout(mid, 2); row1.addLayout(right, 1)
-        controls_layout.addLayout(row1)
-        row2 = QHBoxLayout()
-        row2.addWidget(self.apply_btn); row2.addWidget(self.clear_btn); row2.addWidget(self.auto_dates)
-        row2.addStretch(1); row2.addWidget(self.zoomin_btn); row2.addWidget(self.zoomout_btn)
-        controls_layout.addLayout(row2)
+            controls = QWidget()
+            controls_layout = QVBoxLayout(controls)
+            left = QVBoxLayout(); left.addWidget(QLabel("Characters:")); left.addWidget(self.char_filter)
+            mid  = QVBoxLayout();  mid.addWidget(QLabel("Places:"));     mid.addWidget(self.place_filter)
+            right= QVBoxLayout();  right.addWidget(QLabel("From:"));     right.addWidget(self.date_from)
+            right.addWidget(QLabel("To:")); right.addWidget(self.date_to)
+            row1 = QHBoxLayout(); row1.addLayout(left, 2); row1.addLayout(mid, 2); row1.addLayout(right, 1)
+            controls_layout.addLayout(row1)
+            row2 = QHBoxLayout()
+            row2.addWidget(self.apply_btn); row2.addWidget(self.clear_btn); row2.addWidget(self.auto_dates)
+            row2.addStretch(1); row2.addWidget(self.zoomin_btn); row2.addWidget(self.zoomout_btn)
+            controls_layout.addLayout(row2)
 
-        splitter = QSplitter(Qt.Vertical)
-        splitter.addWidget(controls)
-        splitter.addWidget(self.graph)
-        splitter.setCollapsible(0, False)
-        splitter.setCollapsible(1, False)
-        splitter.setSizes([220, 600])
+            splitter = QSplitter(Qt.Vertical)
+            splitter.addWidget(controls)
+            splitter.addWidget(self.graph)
+            splitter.setCollapsible(0, False)
+            splitter.setCollapsible(1, False)
+            splitter.setSizes([220, 600])
 
-        root = QVBoxLayout(self)
-        root.addWidget(splitter)
+            root = QVBoxLayout(self)
+            root.addWidget(splitter)
 
-        self._populate_filters()
-        self._init_date_defaults()
+            print("🔵 TimelineTab init: populate filters...")
+            self._populate_filters()
+            print("🔵 TimelineTab init: init dates...")
+            self._init_date_defaults()
 
-        self.apply_btn.clicked.connect(self.refresh)
-        self.clear_btn.clicked.connect(self._clear_filters)
-        self.zoomin_btn.clicked.connect(self.graph.zoom_in)
-        self.zoomout_btn.clicked.connect(self.graph.zoom_out)
-        self.char_filter.itemSelectionChanged.connect(self._maybe_auto_dates)
-        self.place_filter.itemSelectionChanged.connect(self._maybe_auto_dates)
+            print("🔵 TimelineTab init: connect signals...")
+            self.apply_btn.clicked.connect(self.refresh)
+            self.clear_btn.clicked.connect(self._clear_filters)
+            self.zoomin_btn.clicked.connect(self.graph.zoom_in)
+            self.zoomout_btn.clicked.connect(self.graph.zoom_out)
+            self.char_filter.itemSelectionChanged.connect(self._maybe_auto_dates)
+            self.place_filter.itemSelectionChanged.connect(self._maybe_auto_dates)
 
-        self.graph.refresh()
+            print("🔵 TimelineTab init: first refresh...")
+            self.graph.refresh()
+            print("🔵 TimelineTab init: done")
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "TimelineTab init error", str(e))
+            raise
 
     def _populate_filters(self):
         with QSignalBlocker(self.char_filter):
