@@ -9,8 +9,8 @@ from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QLabel, QDateEdit, QCheckBox, QSplitter
 )
 from PySide6.QtGui import QColor, QPen, QBrush, QFont, QPixmap, QPainterPath, QPainter
-from PySide6.QtCore import Qt, QRectF, QDate, QSignalBlocker, QSize
-
+from PySide6.QtCore import Qt, QRectF, QDate, QSignalBlocker, QSize, QPointF, QByteArray, QDataStream, Signal
+from PySide6.QtWidgets import QGraphicsItem
 from ..models import Event, Character, Place
 
 # ---- styling / layout ----
@@ -76,13 +76,36 @@ def _first_existing_image(paths: List[str]) -> Optional[str]:
             return p
     return None
 
+def _decode_qabstractitemmodeldatalist(mime) -> Optional[str]:
+    fmt = "application/x-qabstractitemmodeldatalist"
+    if not mime or not mime.hasFormat(fmt):
+        return mime.text() if hasattr(mime, "text") else None
+    data = mime.data(fmt)
+    if not isinstance(data, QByteArray):
+        return None
+    ds = QDataStream(data)
+    if ds.atEnd():
+        return None
+    ds.readInt32()  # row
+    ds.readInt32()  # col
+    items = {}
+    while not ds.atEnd():
+        role = ds.readInt32()
+        value = ds.readQVariant()
+        items[role] = value
+    # DisplayRole = 0
+    return str(items.get(0, "")).strip() or None
+
+
 # ---- view ----
 class PrettyTimelineView(QGraphicsView):
-    def __init__(self, get_events_fn, get_characters_fn, get_places_fn, parent=None):
+    def __init__(self, get_events_fn, get_characters_fn, get_places_fn, on_event_changed=None, on_character_dropped=None, parent=None):
         super().__init__(parent)
         self.get_events_fn = get_events_fn
         self.get_characters_fn = get_characters_fn
         self.get_places_fn = get_places_fn
+        self.on_event_changed = on_event_changed
+        self.on_character_dropped = on_character_dropped
 
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
@@ -174,6 +197,10 @@ class PrettyTimelineView(QGraphicsView):
         def x_for(dt: datetime) -> float:
             days = (dt - dmin).days
             return LEFT_MARGIN + days * step_px / L["tick_days"]
+        
+        def date_for_x(x: float) -> datetime:
+            dayf = (x - LEFT_MARGIN) * L["tick_days"] / step_px
+            return dmin + timedelta(days=int(round(dayf)))
 
         content_w = x_for(dmax) + 220
         content_h = TOP_MARGIN + len(places) * ROW_H + 140
@@ -228,6 +255,62 @@ class PrettyTimelineView(QGraphicsView):
                 txt.setDefaultTextColor(QColor(120, 120, 130))
                 txt.setPos(x - 40, TOP_MARGIN - 55)
             tick += timedelta(days=L["tick_days"])
+        class EventCardItem(QGraphicsItem):
+            def __init__(self, rect: QRectF, ev: Event, place_idx: int, parent_view: 'PrettyTimelineView'):
+                super().__init__()
+                self.rect = QRectF(rect)
+                self.ev = ev
+                self.place_idx = place_idx
+                self.parent_view = parent_view
+                self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemSendsScenePositionChanges)
+                self.setAcceptDrops(True)
+                self.setZValue(30)
+
+            def boundingRect(self) -> QRectF:
+                return QRectF(self.rect)
+
+            def paint(self, painter, option, widget=None):
+                # Transparent overlay – själva kortet är redan ritat i scenen
+                pass
+
+            def itemChange(self, change, value):
+                if change == QGraphicsItem.ItemPositionChange:
+                    new_pos: QPointF = value
+                    new_pos.setY(self.rect.top())  # lås Y till raden
+                    return new_pos
+                if change == QGraphicsItem.ItemPositionHasChanged:
+                    try:
+                        cx = self.pos().x() + self.rect.width()/2
+                        new_dt = date_for_x(cx)
+                        old_start = _parse_date(self.ev.start_date) or new_dt
+                        dur = 0
+                        if getattr(self.ev, "end_date", ""):
+                            end = _parse_date(self.ev.end_date)
+                            if end and old_start:
+                                dur = (end - old_start).days
+                        self.ev.start_date = new_dt.strftime("%Y-%m-%d")
+                        if dur > 0:
+                            self.ev.end_date = (new_dt + timedelta(days=dur)).strftime("%Y-%m-%d")
+                        if callable(self.parent_view.on_event_changed):
+                            self.parent_view.on_event_changed()
+                    except Exception:
+                        pass
+                return super().itemChange(change, value)
+
+            # --- drop av karaktär ---
+            def dragEnterEvent(self, e):
+                e.acceptProposedAction()
+
+            def dragMoveEvent(self, e):
+                e.acceptProposedAction()
+
+            def dropEvent(self, e):
+                name = _decode_qabstractitemmodeldatalist(e.mimeData())
+                if name and name not in self.ev.characters:
+                    self.ev.characters.append(name)
+                    if callable(self.parent_view.on_character_dropped):
+                        self.parent_view.on_character_dropped()
+                e.acceptProposedAction()
 
         # events (cards)
         for ev in events:
@@ -394,6 +477,11 @@ class PrettyTimelineView(QGraphicsView):
                 capture.setToolTip("\n".join(tooltip_lines))
                 capture.setZValue(19)
 
+                mover = EventCardItem(rect, ev, row_idx, self)
+                self.scene.addItem(mover)
+                mover.setPos(rect.left(), rect.top())
+
+
     def zoom_in(self):
         step = 1.25
         self.scale(step, step)
@@ -417,10 +505,22 @@ class PrettyTimelineView(QGraphicsView):
 
 # ---- Tab with filters + splitter ----
 class TimelineTab(QWidget):
+    data_changed = Signal()
+
+    def _on_event_changed(self):
+        self.data_changed.emit()
+        self.graph.refresh()
+
+    def _on_character_dropped(self):
+        self.data_changed.emit()
+        self.graph.refresh()
+
+
     def __init__(self, get_events_fn, get_characters_fn, get_places_fn):
         super().__init__()
 
         self.char_filter = QListWidget(); self.char_filter.setSelectionMode(QListWidget.MultiSelection)
+        self.char_filter.setDragEnabled(True)
         self.place_filter = QListWidget(); self.place_filter.setSelectionMode(QListWidget.MultiSelection)
         self.date_from = QDateEdit(); self.date_from.setCalendarPopup(True); self.date_from.setDisplayFormat("yyyy-MM-dd")
         self.date_to   = QDateEdit(); self.date_to.setCalendarPopup(True);   self.date_to.setDisplayFormat("yyyy-MM-dd")
@@ -435,7 +535,13 @@ class TimelineTab(QWidget):
         self._get_characters = get_characters_fn
         self._get_places     = get_places_fn
 
-        self.graph = PrettyTimelineView(self._get_events_filtered, self._get_characters, self._get_places)
+        self.graph = PrettyTimelineView(
+            self._get_events_filtered,
+            self._get_characters,
+            self._get_places,
+            on_event_changed=self._on_event_changed,
+            on_character_dropped=self._on_character_dropped
+        )
 
         controls = QWidget()
         controls_layout = QVBoxLayout(controls)
@@ -553,5 +659,20 @@ class TimelineTab(QWidget):
         self.refresh()
 
     def refresh(self):
-        self._populate_filters()
+        try:
+            self._populate_filters()
+            self.graph.refresh()
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Timeline error", str(e))
+
+
+    def _on_event_changed(self):
+        self.data_changed.emit()
         self.graph.refresh()
+
+    def _on_character_dropped(self):
+        self.data_changed.emit()
+        self.graph.refresh()
+
+
