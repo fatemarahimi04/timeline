@@ -1,5 +1,6 @@
 # app/ui/timeline.py
-# Fixed: defer on_change to avoid deleting items during mouseReleaseEvent (use QTimer.singleShot)
+# Robust draggable timeline: avoid deleting items during mouseReleaseEvent,
+# defer on_change/refresh, block refresh during drag, snap drag to nearest day.
 from __future__ import annotations
 from typing import List, Dict, Optional, Callable
 from datetime import datetime, timedelta
@@ -110,6 +111,7 @@ class EventItem(QGraphicsObject):
         super().__init__(parent)
         self.ev = ev
         self.characters = characters
+        # x_to_date should be a snapping wrapper supplied by the view
         self.x_to_date = x_to_date
         self.date_to_x = date_to_x
         self.on_change = on_change
@@ -135,7 +137,7 @@ class EventItem(QGraphicsObject):
         painter.setBrush(QBrush(SHADOW_COLOR))
         painter.drawRoundedRect(shadow, EVENT_RADIUS, EVENT_RADIUS)
 
-        # background color / border
+        # card background/border
         if self.ev.characters:
             col = "#EFE7DE"
             try:
@@ -265,10 +267,19 @@ class EventItem(QGraphicsObject):
             painter.setFont(QFont("Segoe UI", 9))
             painter.drawText(badge_rect, Qt.AlignCenter, f"+{more}")
 
-    # Mouse handling: horizontal move only
+    # Mouse handling
     def mousePressEvent(self, event: QMouseEvent):
         self._drag_start_pos = event.pos()
         self._initial_x = self.x()
+        # mark drag active on view to prevent refresh
+        scene = self.scene()
+        if scene:
+            views = scene.views()
+            if views:
+                try:
+                    views[0]._drag_active = True
+                except Exception:
+                    pass
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent):
@@ -289,22 +300,36 @@ class EventItem(QGraphicsObject):
     def mouseReleaseEvent(self, event: QMouseEvent):
         # compute left edge in scene coords
         left_x = self.scenePos().x()
-        # Convert x -> date using provided x_to_date (should be a snapping wrapper)
+        # Convert x -> date (snapping wrapper provided by view)
         start_dt = self.x_to_date(left_x)
-        # preserve original duration (in whole days)
+        # preserve duration
         s_old = _parse_date(self.ev.start_date) or start_dt
         e_old = _parse_date(self.ev.end_date) or s_old
         delta_days = max(0, (e_old - s_old).days)
         new_start = start_dt
         new_end = new_start + timedelta(days=delta_days)
-        # write back to model
         self.ev.start_date = _format_date(new_start)
         self.ev.end_date = _format_date(new_end) if delta_days > 0 else ""
-        # defer calling on_change so the item is not removed while still in release handler
+        # defer on_change and unmark drag active + safe refresh
         if callable(self.on_change):
             QTimer.singleShot(0, lambda ev=self.ev: self.on_change(ev))
-        # do NOT call super().mouseReleaseEvent(event) after this — avoids C++-deleted wrapper issues
+        scene = self.scene()
+        if scene:
+            views = scene.views()
+            if views:
+                v = views[0]
+                def finish():
+                    try:
+                        v._drag_active = False
+                    except Exception:
+                        pass
+                    try:
+                        v.refresh()
+                    except Exception:
+                        pass
+                QTimer.singleShot(0, finish)
         self._drag_start_pos = None
+        # DO NOT call super().mouseReleaseEvent(event) to avoid wrapper deletion races
         return
 
 
@@ -323,6 +348,7 @@ class PrettyTimelineView(QGraphicsView):
         self.setDragMode(QGraphicsView.ScrollHandDrag)
         self.setBackgroundBrush(QBrush(BG_COLOR))
         self.scale_factor = 1.0
+        self._drag_active = False
 
         self._font = QFont("Segoe UI")
         self._font.setPointSize(10)
@@ -346,26 +372,11 @@ class PrettyTimelineView(QGraphicsView):
         return LEFT_MARGIN + days * max(X_STEP_MIN, 140) / lod["tick_days"]
 
     def x_to_date(self, x: float, dmin: datetime, lod: dict) -> datetime:
-        # returns FLOAT-day date (not snapped)
         days = (x - LEFT_MARGIN) * lod["tick_days"] / max(X_STEP_MIN, 140)
         return dmin + timedelta(days=days)
 
-    # wrapper for EventItem: returns snapped date (nearest whole day)
-    def _current_x_to_date(self, x: float) -> datetime:
-        events = self.get_events_fn()
-        dates = []
-        for e in events:
-            s = _parse_date(getattr(e, "start_date", "") or "")
-            if s:
-                dates.append(s)
-            t = _parse_date(getattr(e, "end_date", "") or "")
-            if t:
-                dates.append(t)
-        if not dates:
-            return datetime.now()
-        dmin = min(dates) - timedelta(days=0.5)
-        lod = self._lod()
-        step_px = max(X_STEP_MIN, 140)
+    # snap wrapper for EventItem
+    def _snap_x_to_date(self, x: float, dmin: datetime, lod: dict, step_px: int) -> datetime:
         days_float = (x - LEFT_MARGIN) * lod["tick_days"] / step_px
         days_rounded = int(round(days_float))
         return dmin + timedelta(days=days_rounded)
@@ -387,6 +398,11 @@ class PrettyTimelineView(QGraphicsView):
         return self.date_to_x(dt, dmin, lod)
 
     def refresh(self):
+        if getattr(self, "_drag_active", False):
+            # retry shortly after drag finishes
+            QTimer.singleShot(120, self.refresh)
+            return
+
         self.scene.clear()
         events: List[Event] = self.get_events_fn()
         characters: List[Character] = self.get_characters_fn()
@@ -436,7 +452,7 @@ class PrettyTimelineView(QGraphicsView):
         panel_rect = QRectF(20, 20, scene_w - 40, scene_h - 40)
         _add_rounded_rect(self.scene, panel_rect, 16, QPen(PANEL_BORDER), QBrush(PANEL_COLOR))
 
-        # places
+        # places + ticks + EventItems...
         for i, p in enumerate(places):
             y = TOP_MARGIN + i * ROW_H
             line_y = y + ROW_H / 2
@@ -464,7 +480,6 @@ class PrettyTimelineView(QGraphicsView):
             name_item.setDefaultTextColor(Qt.black)
             name_item.setPos(name_x, pill_rect.top() + (pill_rect.height() - 14) / 2)
 
-        # ticks
         tick = dmin - timedelta(days=(dmin.weekday() % 7))
         while tick <= dmax:
             x = x_for(tick)
@@ -475,7 +490,6 @@ class PrettyTimelineView(QGraphicsView):
                 txt.setPos(x - 35, TOP_MARGIN - 55)
             tick += timedelta(days=lod["tick_days"])
 
-        # add EventItems
         for ev in events:
             sdt = _parse_date(getattr(ev, "start_date", "") or "")
             edt = _parse_date(getattr(ev, "end_date", "") or "") or sdt
@@ -514,17 +528,10 @@ class PrettyTimelineView(QGraphicsView):
     def _lod_getter(self):
         return self._lod()
 
-    def _snap_x_to_date(self, x: float, dmin: datetime, lod: dict, step_px: int) -> datetime:
-        days_float = (x - LEFT_MARGIN) * lod["tick_days"] / step_px
-        days_rounded = int(round(days_float))
-        return dmin + timedelta(days=days_rounded)
-
     def _on_event_changed(self, ev: Event):
-        # defer propagation to avoid deleting items mid-event
         if callable(self.on_event_changed):
             QTimer.singleShot(0, lambda e=ev: self.on_event_changed(e))
 
-    # zoom helpers
     def zoom_in(self):
         step = 1.25
         self.scale(step, step)
@@ -573,7 +580,6 @@ class TimelineTab(QWidget):
         self._get_characters = get_characters_fn
         self._get_places = get_places_fn
 
-        # pass on_event_changed callback so tab can emit data_changed/save
         self.graph = PrettyTimelineView(self._get_events_filtered, self._get_characters, self._get_places, on_event_changed=self._on_item_changed)
 
         controls = QWidget()
@@ -605,7 +611,6 @@ class TimelineTab(QWidget):
         root = QVBoxLayout(self)
         root.addWidget(splitter)
 
-        # keyboard shortcuts using QShortcut
         QShortcut(QKeySequence("Ctrl++"), self, activated=self.graph.zoom_in)
         QShortcut(QKeySequence("Ctrl+="), self, activated=self.graph.zoom_in)
         QShortcut(QKeySequence("Ctrl+-"), self, activated=self.graph.zoom_out)
@@ -620,15 +625,16 @@ class TimelineTab(QWidget):
         self.graph.refresh()
 
     def _on_item_changed(self, ev: Event):
-        # defer refresh + emit so it doesn't run inside release handler
+        # defer emitting + refresh so it doesn't run inside release handler
         QTimer.singleShot(0, self._deferred_item_changed)
 
     def _deferred_item_changed(self):
-        # emit and refresh in next loop cycle (safe)
         try:
             self.data_changed.emit()
         except Exception:
             pass
+
+        # don't force immediate refresh from the tab; MainWindow handles save, graph refresh will occur safely
         try:
             self.graph.refresh()
         except Exception:
