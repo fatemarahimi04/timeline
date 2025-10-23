@@ -48,9 +48,10 @@ class MainWindow(QWidget):
         self.events_tab = EventsTab(events, characters=characters, places=places)
         self.timeline_tab = TimelineTab(self.events_tab.values, self.chars_tab.values, self.places_tab.values)
 
+        
         self.chars_tab.data_changed.connect(self._update_events_characters)
-        self.timeline_tab.data_changed.connect(self._save_now)
-
+        self.places_tab.data_changed.connect(self._update_events_places)
+        
         self.events_tab.data_changed.connect(self._save_now)
         self.chars_tab.data_changed.connect(self._save_now)
         self.places_tab.data_changed.connect(self._save_now)
