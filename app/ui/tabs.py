@@ -13,7 +13,6 @@ from PySide6.QtGui import QColor, QPixmap, QIcon
 
 from ..models import Character, Place, Event
 
-# Förvalda färger (exakt sju som du önskade)
 PALETTE = [
     ("Baby rosa", "#F8C8DC"),
     ("Ljust blå", "#A7C7E7"),
@@ -24,7 +23,6 @@ PALETTE = [
     ("Ljus brun", "#C8A27E"),
 ]
 
-# ---------- Character ----------
 class CharacterForm(QDialog):
     def __init__(self, character: Character = None, parent=None):
         super().__init__(parent)
@@ -34,19 +32,14 @@ class CharacterForm(QDialog):
         self.name_edit = QLineEdit()
         self.desc_edit = QTextEdit()
 
-        # Förvald färg via ComboBox (visar en färgruta som ikon)
         self.color_combo = QComboBox()
-        # ikonstorlek så färgrutan syns i dropdown och i vald rad
         self.color_combo.setIconSize(QSize(16, 16))
         for label, hexcode in PALETTE:
-            # skapa liten pixmap fylld med färg för att använda som ikon
             pix = QPixmap(16, 16)
             pix.fill(QColor(hexcode))
             icon = QIcon(pix)
-            # lägg till item med icon, textrubrik och userData = hexkod
             self.color_combo.addItem(icon, label, hexcode)
 
-        # Images
         self.images_list = QListWidget()
         self.add_img_btn = QPushButton("Add Image")
         self.del_img_btn = QPushButton("Delete Image")
@@ -69,7 +62,6 @@ class CharacterForm(QDialog):
         if character:
             self.name_edit.setText(character.name)
             self.desc_edit.setPlainText(character.description)
-            # välj rätt färg i listan (sök på userData = hexkod)
             idx = self.color_combo.findData(character.color)
             if idx == -1:
                 idx = 0
@@ -113,7 +105,6 @@ class CharacterForm(QDialog):
         return Character(name=name, description=desc, color=color, images=images)
 
 
-# ---------- Place ----------
 class PlaceForm(QDialog):
     def __init__(self, place: Place = None, parent=None):
         super().__init__(parent)
@@ -182,7 +173,6 @@ class PlaceForm(QDialog):
         return Place(name=name, description=desc, images=images)
 
 
-# ---------- Event ----------
 class EventForm(QDialog):
     def __init__(self, event: Event = None, characters: List[Character] = None, places: List[Place] = None, parent=None):
         super().__init__(parent)
@@ -192,10 +182,7 @@ class EventForm(QDialog):
         from PySide6.QtCore import QDate
         self.title_edit = QLineEdit()
         self.desc_edit = QTextEdit()
-        self.start_date_edit = QLineEdit()
-        self.end_date_edit = QLineEdit()
 
-        # Byt till QDateEdit för datum (default: idag)
         from PySide6.QtWidgets import QDateEdit
         self.start_date_edit = QDateEdit()
         self.start_date_edit.setCalendarPopup(True)
@@ -206,15 +193,12 @@ class EventForm(QDialog):
         self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
         self.end_date_edit.setDate(QDate.currentDate())
 
-        # sync: när start ändras → end = start
         self.start_date_edit.dateChanged.connect(lambda d: self.end_date_edit.setDate(d))
 
-        # Bilder
         self.images_list = QListWidget()
         self.add_img_btn = QPushButton("Add Image"); self.del_img_btn = QPushButton("Delete Image")
         self.add_img_btn.clicked.connect(self._add_img); self.del_img_btn.clicked.connect(self._del_img)
 
-        # Multi-select Characters/Places
         self.char_list = QListWidget(); self.char_list.setSelectionMode(QListWidget.MultiSelection)
         for c in (characters or []):
             self.char_list.addItem(c.name)
@@ -295,7 +279,6 @@ class EventForm(QDialog):
         return Event(title=title, description=desc, start_date=start_date, end_date=end_date, images=images, characters=characters, places=places)
 
 
-# ---------- Tabs (listor & CRUD) ----------
 class CharactersTab(QWidget):
     data_changed = Signal()
     def __init__(self, initial_chars: List[Character]):

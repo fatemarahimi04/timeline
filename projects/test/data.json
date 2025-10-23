@@ -54,8 +54,8 @@
     {
       "title": "pluggar",
       "description": "jag pluggar nu",
-      "start_date": "2025-10-01",
-      "end_date": "2025-10-06",
+      "start_date": "2025-09-25",
+      "end_date": "2025-09-30",
       "images": [
         "pictures\\0.jpg"
       ],
@@ -69,13 +69,15 @@
     {
       "title": "jobbar",
       "description": "aseel jobbar nu",
-      "start_date": "2025-10-06",
-      "end_date": "2025-10-13",
+      "start_date": "2025-09-10",
+      "end_date": "2025-09-17",
       "images": [
         "pictures\\Screenshot 2025-10-07 162118.png"
       ],
       "characters": [
-        "aseel"
+        "fatema",
+        "aseel",
+        "vem"
       ],
       "places": [
         "alby"
@@ -83,9 +85,9 @@
     },
     {
       "title": "blir arg",
-      "description": "jae trött",
-      "start_date": "2025-11-13",
-      "end_date": "2025-11-16",
+      "description": "jae trött, tror jag",
+      "start_date": "2025-07-31",
+      "end_date": "2025-08-06",
       "images": [],
       "characters": [
         "fatema",
