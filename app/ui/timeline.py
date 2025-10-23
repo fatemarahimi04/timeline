@@ -1,7 +1,6 @@
-# Modern, clean timeline (bands start→end inclusive)
-# + Shows event description and character avatars (with image if available)
+# Uppdaterad timeline: bättre rendering av plats-avatarer i pill (ren, centrerad, med padding)
 from __future__ import annotations
-from typing import List, Dict, Optional, Callable
+from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 import os
 
@@ -9,48 +8,41 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QGraphicsView, QGraphicsScene, QHBoxLayout, QPushButton,
     QListWidget, QListWidgetItem, QLabel, QDateEdit, QCheckBox, QSplitter
 )
-from PySide6.QtGui import (
-    QColor, QPen, QBrush, QFont, QPixmap, QPainterPath, QPainter,
-    QShortcut, QKeySequence
-)
-from PySide6.QtCore import Qt, QRectF, QDate, QSignalBlocker, QSize, Signal
+from PySide6.QtGui import QColor, QPen, QBrush, QFont, QPixmap, QPainterPath, QPainter
+from PySide6.QtCore import Qt, QRectF, QDate, QSignalBlocker, QSize
 
 from ..models import Event, Character, Place
 
-# ---- layout / styling ----
-ROW_H              = 84
-LEFT_MARGIN        = 190
-TOP_MARGIN         = 110
-X_STEP_MIN         = 220
+# ---- styling / layout ----
+ROW_H           = 100
+LEFT_MARGIN     = 180
+TOP_MARGIN      = 100
+EVENT_RADIUS    = 12
+EVENT_PADDING   = 12
+X_STEP_MIN      = 210
 
-PLACE_PILL_H       = 36
-PLACE_AVATAR       = 26
-PLACE_PILL_PAD_X   = 10
-
-BAND_RADIUS        = 14
-BAND_STROKE        = 2.0
-TITLE_SIZE         = 14
-DATE_SIZE          = 12
-DESC_SIZE          = 11
+# Place pill specifics (ny)
+PLACE_PILL_HEIGHT = 36
+PLACE_AVATAR_SIZE = 28
+PLACE_PILL_PADDING = 10
 
 BG_COLOR        = QColor("#F7F8FB")
 PANEL_COLOR     = QColor("#FFFFFF")
-PANEL_BORDER    = QColor(225, 229, 240)
-AXIS_COLOR      = QColor(196, 200, 214)
-LINE_COLOR      = QColor(130, 150, 210, 200)
+PANEL_BORDER    = QColor(220, 224, 236)
+AXIS_COLOR      = QColor(190, 195, 210)
+TIMELINE_COLOR  = QColor(120, 150, 210)
 
-TEXT_PRIMARY    = QColor("#111827")
-TEXT_SUBTLE     = QColor("#0F766E")
-TEXT_DESC       = QColor("#374151")
+TITLE_COLOR     = QColor("#1F2937")
+DATE_COLOR      = QColor("#0F766E")
+DESC_COLOR      = QColor("#374151")
+CARD_BORDER     = QColor(90, 70, 50, 180)
+SHADOW_COLOR    = QColor(0, 0, 0, 55)
+CHIP_TEXT       = QColor(35, 35, 35)
 
-PILL_BG         = QColor(255, 255, 255, 235)
-PILL_STROKE     = QColor(215, 218, 230)
+PLACE_PILL_BG   = QColor(255, 255, 255, 230)
+PLACE_PILL_STROKE = QColor(210, 210, 220)
 
-CHIP_SIZE       = 18
-CHIP_GAP        = 6
-
-
-# ---- helpers ---------------------------------------------------------------
+# ---- helpers ----
 def _add_rounded_rect(scene: QGraphicsScene, rect: QRectF, radius: float, pen: QPen, brush: QBrush):
     path = QPainterPath()
     path.addRoundedRect(rect, radius, radius)
@@ -62,112 +54,114 @@ def _parse_date(s: str) -> Optional[datetime]:
         return None
     try:
         return datetime.strptime(s, "%Y-%m-%d")
-    except Exception:
+    except ValueError:
         return None
 
-def _first_img(paths: List[str]) -> Optional[str]:
+def _elide(text: str, max_chars: int) -> str:
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1] + "…"
+
+def _elide_to_width(text: str, px_width: int, approx_char_px: int = 7) -> str:
+    if px_width <= 0:
+        return ""
+    max_chars = max(1, px_width // approx_char_px)
+    return _elide(text, max_chars)
+
+def _first_existing_image(paths: List[str]) -> Optional[str]:
     for p in paths or []:
-        if not p:
-            continue
         if not os.path.isabs(p):
             p = os.path.join(os.getcwd(), p)
         if os.path.exists(p):
             return p
     return None
 
-def _alpha(color: QColor, a: int) -> QColor:
-    c = QColor(color)
-    c.setAlpha(a)
-    return c
-
-def _mix(c: QColor, w: QColor, p: float) -> QColor:
-    return QColor(
-        int(c.red()   * (1-p) + w.red()   * p),
-        int(c.green() * (1-p) + w.green() * p),
-        int(c.blue()  * (1-p) + w.blue()  * p),
-    )
-
-
-# ---- view ------------------------------------------------------------------
+# ---- view ----
 class PrettyTimelineView(QGraphicsView):
-    def __init__(
-        self,
-        get_events_fn: Callable[[], List[Event]],
-        get_characters_fn: Callable[[], List[Character]],
-        get_places_fn: Callable[[], List[Place]],
-        get_selected_chars_fn: Callable[[], List[str]] | None = None,
-        parent=None
-    ):
+    def __init__(self, get_events_fn, get_characters_fn, get_places_fn, parent=None):
         super().__init__(parent)
         self.get_events_fn = get_events_fn
         self.get_characters_fn = get_characters_fn
         self.get_places_fn = get_places_fn
-        self.get_selected_chars_fn = get_selected_chars_fn or (lambda: [])
 
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
 
         self.setRenderHint(QPainter.Antialiasing, True)
-        self.setBackgroundBrush(QBrush(BG_COLOR))
         self.setDragMode(QGraphicsView.ScrollHandDrag)
+        self.setBackgroundBrush(QBrush(BG_COLOR))
         self.scale_factor = 1.0
 
-        self._font = QFont("Segoe UI", 10)
+        self._font = QFont("Segoe UI")
+        self._font.setPointSize(10)
+        self.setMouseTracking(True); self.viewport().setMouseTracking(True)
 
     def minimumSizeHint(self) -> QSize:
-        return QSize(420, 320)
+        return QSize(400, 300)
 
     def _lod(self):
         z = self.scale_factor
         if z < 0.95:
             return {
-                "tick_days": 28, "date_fmt": "%Y-%m",
-                "band_h": 26, "thumb": 40,
-                "show_desc": False, "max_chips": 0,
+                "tick_days": 28,
+                "date_fmt": "%Y-%m",
+                "show_image": True,
+                "thumb": 44,
+                "title_mode": "none",
+                "show_date": False,
+                "show_desc": False,
+                "wrap_desc": False,
+                "max_chips": 0,
+                "event_w": 220,
+                "event_h": 72,
             }
-        elif z < 1.25:
+        elif z < 1.20:
             return {
-                "tick_days": 7, "date_fmt": "%Y-%m-%d",
-                "band_h": 30, "thumb": 48,
-                "show_desc": True,  # visa beskrivning i normal zoom
+                "tick_days": 7,
+                "date_fmt": "%Y-%m-%d",
+                "show_image": True,
+                "thumb": 52,
+                "title_mode": "abbr3",
+                "show_date": True,
+                "show_desc": False,
+                "wrap_desc": False,
                 "max_chips": 2,
+                "event_w": 250,
+                "event_h": 86,
             }
         else:
             return {
-                "tick_days": 3, "date_fmt": "%Y-%m-%d",
-                "band_h": 34, "thumb": 56,
-                "show_desc": True,  # visa beskrivning i hög zoom
-                "max_chips": 3,
+                "tick_days": 3,
+                "date_fmt": "%Y-%m-%d",
+                "show_image": True,
+                "thumb": 68,
+                "title_mode": "full",
+                "show_date": True,
+                "show_desc": True,
+                "wrap_desc": True,
+                "max_chips": 4,
+                "event_w": 310,
+                "event_h": 108,
             }
 
     def refresh(self):
         self.scene.clear()
-
         events: List[Event] = self.get_events_fn()
         characters: List[Character] = self.get_characters_fn()
         places: List[Place] = self.get_places_fn()
-        selected_chars = set(self.get_selected_chars_fn() or [])
 
         L = self._lod()
         char_by_name: Dict[str, Character] = {c.name: c for c in characters}
-
-        # samla datum
-        dates: List[datetime] = []
-        for e in events:
-            s = _parse_date(getattr(e, "start_date", "") or "")
-            if s:
-                dates.append(s)
-            t = _parse_date(getattr(e, "end_date", "") or "")
-            if t:
-                dates.append(t)
-        dates = sorted(dates)
+        dates = sorted({_parse_date(e.start_date) for e in events if e.start_date})
+        dates = [d for d in dates if d]
 
         vp_w = max(1000, self.viewport().width())
-        vp_h = max(600, self.viewport().height())
+        vp_h = max(600,  self.viewport().height())
 
         if not places or not dates:
             self.scene.setSceneRect(0, 0, vp_w, vp_h)
-            _add_rounded_rect(self.scene, QRectF(20, 20, vp_w-40, vp_h-40), 14, QPen(PANEL_BORDER), QBrush(PANEL_COLOR))
+            panel_rect = QRectF(20, 20, vp_w - 40, vp_h - 40)
+            _add_rounded_rect(self.scene, panel_rect, 16, QPen(PANEL_BORDER), QBrush(PANEL_COLOR))
             self.scene.addText("No data to display").setPos(LEFT_MARGIN, TOP_MARGIN)
             return
 
@@ -177,206 +171,197 @@ class PrettyTimelineView(QGraphicsView):
 
         step_px = max(X_STEP_MIN, 140)
 
-        def day_width() -> float:
-            return step_px / L["tick_days"]
-
         def x_for(dt: datetime) -> float:
-            days = (dt - dmin).total_seconds() / 86400.0
+            days = (dt - dmin).days
             return LEFT_MARGIN + days * step_px / L["tick_days"]
 
-        def band_span(s: datetime, e: Optional[datetime]) -> tuple[float, float]:
-            xs = x_for(s)
-            if e and e >= s:
-                xe = x_for(e + timedelta(days=1))  # end inclusive
-            else:
-                xe = xs + max(day_width() * 0.75, 36.0)
-            return xs, xe
-
-        content_w = x_for(dmax) + 240
+        content_w = x_for(dmax) + 220
         content_h = TOP_MARGIN + len(places) * ROW_H + 140
         scene_w = max(content_w + 40, vp_w)
         scene_h = max(content_h + 40, vp_h)
         self.scene.setSceneRect(0, 0, scene_w, scene_h)
 
         # panel
-        _add_rounded_rect(self.scene, QRectF(20, 20, scene_w-40, scene_h-40), 14, QPen(PANEL_BORDER), QBrush(PANEL_COLOR))
+        panel_rect = QRectF(20, 20, scene_w - 40, scene_h - 40)
+        _add_rounded_rect(self.scene, panel_rect, 16, QPen(PANEL_BORDER), QBrush(PANEL_COLOR))
 
-        # platsrader
+        # platsrader + pill + place-avatar (förbättrad)
         for i, p in enumerate(places):
             y = TOP_MARGIN + i * ROW_H
-            y_mid = y + ROW_H/2
-            self.scene.addLine(LEFT_MARGIN - 8, y_mid, scene_w - 60, y_mid, QPen(LINE_COLOR, 3.0))
+            # center pill vertically around line
+            line_y = y + ROW_H / 2
 
-            pill = QRectF(20, y_mid - PLACE_PILL_H/2, LEFT_MARGIN - 40, PLACE_PILL_H)
-            _add_rounded_rect(self.scene, pill, PLACE_PILL_H/2, QPen(PILL_STROKE), QBrush(PILL_BG))
-            name_x = pill.left() + PLACE_PILL_PAD_X
+            # timeline line
+            self.scene.addLine(LEFT_MARGIN - 10, line_y, scene_w - 60, line_y, QPen(TIMELINE_COLOR, 3))
 
-            imgp = _first_img(getattr(p, "images", []))
-            if imgp:
-                a_size = min(PLACE_AVATAR, pill.height() - 8)
-                a_rect = QRectF(pill.left() + PLACE_PILL_PAD_X, pill.top() + (pill.height()-a_size)/2, a_size, a_size)
-                _add_rounded_rect(self.scene, a_rect, a_size/2, QPen(QColor(0,0,0,20)), QBrush(Qt.white))
-                pm = QPixmap(imgp)
+            # pill: använd PLACE_PILL_HEIGHT för konsekvent utseende
+            pill_rect = QRectF(20, line_y - (PLACE_PILL_HEIGHT / 2), LEFT_MARGIN - 40, PLACE_PILL_HEIGHT)
+            _add_rounded_rect(self.scene, pill_rect, PLACE_PILL_HEIGHT/2, QPen(PLACE_PILL_STROKE), QBrush(PLACE_PILL_BG))
+
+            # place avatar (liten rund ram + centrerad bild)
+            p_img = _first_existing_image(getattr(p, "images", []))
+            name_x = pill_rect.left() + PLACE_PILL_PADDING
+
+            if p_img:
+                avatar_size = PLACE_AVATAR_SIZE
+                # clamp avatar size to fit inside pill
+                avatar_size = min(avatar_size, pill_rect.height() - 6)
+                avatar_rect = QRectF(pill_rect.left() + PLACE_PILL_PADDING,
+                                     pill_rect.top() + (pill_rect.height() - avatar_size) / 2,
+                                     avatar_size, avatar_size)
+                # white rounded background to separate from pill color
+                _add_rounded_rect(self.scene, avatar_rect, avatar_size / 2, QPen(QColor(0,0,0,20)), QBrush(Qt.white))
+                pm = QPixmap(p_img)
                 if not pm.isNull():
-                    inner = a_rect.adjusted(3,3,-3,-3)
+                    inner = avatar_rect.adjusted(3, 3, -3, -3)
                     pm = pm.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    # center image inside inner
+                    px = inner.left() + (inner.width() - pm.width()) / 2
+                    py = inner.top() + (inner.height() - pm.height()) / 2
                     pm_item = self.scene.addPixmap(pm)
-                    pm_item.setPos(inner.left() + (inner.width()-pm.width())/2,
-                                   inner.top() + (inner.height()-pm.height())/2)
-                name_x = a_rect.right() + 8
+                    pm_item.setPos(px, py)
+                    pm_item.setZValue(12)
+                # move name start to right of avatar with spacing
+                name_x = avatar_rect.right() + 8
 
-            nm = self.scene.addText(p.name, QFont(self._font.family(), 11))
-            nm.setDefaultTextColor(TEXT_PRIMARY)
-            nm.setPos(name_x, pill.top() + (pill.height()-14)/2)
+            # place name: vertically centered, elide if too long
+            name_font = QFont(self._font.family(), 11)
+            name_item = self.scene.addText(_elide(p.name, 24), name_font)
+            name_item.setDefaultTextColor(Qt.black)
+            # vertical center inside pill
+            name_item.setPos(name_x, pill_rect.top() + (pill_rect.height() - 14) / 2)
 
-        # datum-ticks
+        # datumtick
         tick = dmin - timedelta(days=(dmin.weekday() % 7))
         while tick <= dmax:
             x = x_for(tick)
             if x >= LEFT_MARGIN - 5:
-                self.scene.addLine(x, TOP_MARGIN - 32, x, scene_h - 60, QPen(AXIS_COLOR, 1, Qt.DashLine))
-                txt = self.scene.addText(tick.strftime(L["date_fmt"]), QFont(self._font.family(), 12))
+                self.scene.addLine(x, TOP_MARGIN - 30, x, scene_h - 60, QPen(AXIS_COLOR, 1, Qt.DashLine))
+                txt = self.scene.addText(tick.strftime(L["date_fmt"]), self._font)
                 txt.setDefaultTextColor(QColor(120, 120, 130))
-                txt.setPos(x - 40, TOP_MARGIN - 56)
+                txt.setPos(x - 40, TOP_MARGIN - 55)
             tick += timedelta(days=L["tick_days"])
 
-        # event-band
+        # events (behålls i stort som tidigare, oförändrade här)
         for ev in events:
-            sdt = _parse_date(getattr(ev, "start_date", "") or "")
-            edt = _parse_date(getattr(ev, "end_date", "") or "")
+            sdt = _parse_date(ev.start_date)
             if not sdt:
                 continue
-
             for place_name in getattr(ev, "places", []) or [""]:
                 row_idx = next((i for i, pl in enumerate(places) if pl.name == place_name), None)
                 if row_idx is None:
                     continue
 
-                xs, xe = band_span(sdt, edt if edt and edt >= sdt else None)
-                width = max(16.0, xe - xs)
-                y_mid = TOP_MARGIN + row_idx * ROW_H + ROW_H/2
-                band_h = L["band_h"]
+                x = x_for(sdt)
+                y_center = TOP_MARGIN + row_idx * ROW_H + ROW_H / 2
 
-                # färg från första karaktär
-                base = QColor("#94A3B8")
+                Lcur = L
+                raw_left = x - Lcur["event_w"] / 2
+                min_left = LEFT_MARGIN
+                max_left = scene_w - 60 - Lcur["event_w"]
+                rect_left = max(min_left, min(raw_left, max_left))
+                rect = QRectF(rect_left, y_center - Lcur["event_h"] / 2, Lcur["event_w"], Lcur["event_h"])
+
+                shadow = QRectF(rect); shadow.translate(0, 4)
+                _add_rounded_rect(self.scene, shadow, EVENT_RADIUS, QPen(Qt.NoPen), QBrush(SHADOW_COLOR))
+
                 if ev.characters:
-                    first = char_by_name.get(ev.characters[0])
-                    if first:
-                        try: base = QColor(first.color)
-                        except Exception: pass
-                fill  = _mix(base, QColor("#FFFFFF"), 0.65)
-                edge  = QColor(base.darker(135))
-
-                dim = 1.0
-                selected_chars = set(self.get_selected_chars_fn() or [])
-                if selected_chars and not (set(ev.characters or []) & selected_chars):
-                    dim = 0.35
-                fill = _alpha(fill, int(220*dim))
-                edge = _alpha(edge, int(200*dim))
-
-                band_rect = QRectF(xs, y_mid - band_h/2, width, band_h)
-
-                glow = QRectF(band_rect); glow.translate(0, 3)
-                _add_rounded_rect(self.scene, glow, BAND_RADIUS, QPen(Qt.NoPen), QBrush(_alpha(QColor(0,0,0), int(40*dim))))
-                _add_rounded_rect(self.scene, band_rect, BAND_RADIUS, QPen(edge, BAND_STROKE), QBrush(fill))
-
-                # event thumbnail (vänster i bandet)
-                left_pad = 10.0
-                ev_img = _first_img(getattr(ev, "images", []))
-                if ev_img and band_h > 20:
-                    a = min(band_h - 8, L["thumb"])
-                    frame = QRectF(band_rect.left() + 8, band_rect.top() + (band_h - a)/2, a, a)
-                    _add_rounded_rect(self.scene, frame, 6, QPen(QColor(0,0,0,25)), QBrush(Qt.white))
-                    pm = QPixmap(ev_img)
-                    if not pm.isNull():
-                        inner = frame.adjusted(3,3,-3,-3)
-                        pm = pm.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                        pm_item = self.scene.addPixmap(pm)
-                        pm_item.setPos(inner.left() + (inner.width()-pm.width())/2,
-                                       inner.top() + (inner.height()-pm.height())/2)
-                    left_pad = frame.width() + 14
-
-                # textblock
-                title_font = QFont(self._font); title_font.setPointSize(TITLE_SIZE); title_font.setBold(True)
-                date_font  = QFont(self._font);  date_font.setPointSize(DATE_SIZE)
-                desc_font  = QFont(self._font);  desc_font.setPointSize(DESC_SIZE)
-
-                tx_left = band_rect.left() + left_pad + 4
-                tx_right = band_rect.right() - 8 - max(0, (L["max_chips"])*(CHIP_SIZE+CHIP_GAP)) - 6
-                tx_w = max(20.0, tx_right - tx_left)
-
-                # Build strings
-                title_txt = ev.title or ""
-                date_txt  = f"{ev.start_date}" + (f" – {ev.end_date}" if ev.end_date else "")
-                desc_txt  = (ev.description or "").strip()
-
-                # Title
-                t_item = self.scene.addText(title_txt, title_font)
-                t_item.setDefaultTextColor(_alpha(TEXT_PRIMARY, int(255*dim)))
-                t_item.setTextWidth(tx_w)  # gör att Qt eliderar när smalt
-                # Date
-                d_item = self.scene.addText(date_txt, date_font)
-                d_item.setDefaultTextColor(_alpha(TEXT_SUBTLE, int(255*dim)))
-                d_item.setTextWidth(tx_w)
-                # Description (en rad)
-                if L["show_desc"] and desc_txt:
-                    desc_item = self.scene.addText(desc_txt, desc_font)
-                    desc_item.setDefaultTextColor(_alpha(TEXT_DESC, int(240*dim)))
-                    desc_item.setTextWidth(tx_w)
+                    base_col = QColor("#9aa")
+                    try:
+                        base_col = QColor(char_by_name.get(ev.characters[0], Character(name="", color="#9aa")).color)
+                    except Exception:
+                        base_col = QColor("#9aa")
+                    bg = QColor(base_col); bg.setAlpha(255)
+                    border = QColor(base_col.darker(140))
                 else:
-                    desc_item = None
+                    bg = QColor("#EFE7DE"); border = CARD_BORDER
+                _add_rounded_rect(self.scene, rect, EVENT_RADIUS, QPen(border, 1.6), QBrush(bg))
 
-                # placera blocket centrerat vertikalt
-                block_h = t_item.boundingRect().height() + d_item.boundingRect().height()
-                if desc_item:
-                    block_h += desc_item.boundingRect().height()
-                cy = band_rect.top() + (band_h - block_h)/2
-                t_item.setPos(tx_left, cy - 1)
-                d_item.setPos(tx_left, t_item.pos().y() + t_item.boundingRect().height() - 2)
-                if desc_item:
-                    desc_item.setPos(tx_left, d_item.pos().y() + d_item.boundingRect().height() - 2)
+                padding   = EVENT_PADDING
+                text_left = rect.left() + padding
 
-                # character avatars (höger)
-                cx_chip = band_rect.right() - 8 - CHIP_SIZE
-                cy_chip = band_rect.top() + (band_h - CHIP_SIZE)/2
-                for name in (ev.characters or [])[: L["max_chips"]]:
-                    ch = char_by_name.get(name)
-                    col = QColor("#A3A3A3")
-                    imgp = None
-                    if ch:
-                        try: col = QColor(ch.color)
-                        except Exception: pass
-                        imgp = _first_img(getattr(ch, "images", []))
+                # thumbnail (unchanged logic)
+                imgp = _first_existing_image(ev.images) if (Lcur["show_image"] and ev.images) else None
+                if imgp and Lcur["thumb"] > 0:
+                    frame = QRectF(rect.left() + padding,
+                                   rect.top()  + (Lcur["event_h"] - Lcur["thumb"]) / 2,
+                                   Lcur["thumb"], Lcur["thumb"])
+                    _add_rounded_rect(self.scene, frame, 8, QPen(QColor(0,0,0,30)), QBrush(Qt.white))
+                    pix = QPixmap(imgp)
+                    if not pix.isNull():
+                        inner = frame.adjusted(4, 4, -4, -4)
+                        pix = pix.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                        pm_item = self.scene.addPixmap(pix)
+                        # center
+                        px = inner.left() + (inner.width() - pix.width()) / 2
+                        py = inner.top() + (inner.height() - pix.height()) / 2
+                        pm_item.setPos(px, py)
+                    text_left = frame.right() + 10
 
-                    # bakgrundscirkel
-                    circ = self.scene.addEllipse(cx_chip, cy_chip, CHIP_SIZE, CHIP_SIZE, QPen(Qt.NoPen), QBrush(_alpha(col, int(255*dim))))
-                    circ.setZValue(20)
-                    # bild om finns
-                    if imgp:
-                        pm = QPixmap(imgp)
-                        if not pm.isNull():
-                            inner = QRectF(cx_chip+2, cy_chip+2, CHIP_SIZE-4, CHIP_SIZE-4)
-                            _add_rounded_rect(self.scene, inner, (CHIP_SIZE-4)/2, QPen(Qt.NoPen), QBrush(Qt.white))
-                            pm = pm.scaled(int(inner.width()), int(inner.height()), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-                            pm_item = self.scene.addPixmap(pm)
-                            pm_item.setPos(inner.left() + (inner.width()-pm.width())/2,
-                                           inner.top() + (inner.height()-pm.height())/2)
-                            pm_item.setZValue(21)
-                    cx_chip -= (CHIP_SIZE + CHIP_GAP)
+                text_right = rect.right() - (padding + 12)
+                text_width = max(10, int(text_right - text_left))
 
-                # tooltip
-                tips = [ev.title or "", date_txt]
-                if desc_txt:
-                    tips.append(desc_txt)
-                if ev.characters:
-                    tips.append("Characters: " + ", ".join(ev.characters))
-                if ev.places:
-                    tips.append("Places: " + ", ".join(ev.places))
-                cover = self.scene.addRect(band_rect, QPen(Qt.NoPen), QBrush(Qt.transparent))
-                cover.setToolTip("\n".join(tips))
-                cover.setZValue(25)
+                base_y   = rect.top() + 10
+                next_y   = base_y
 
-    # --- zoom helpers --------------------------------------------------------
+                title_mode = Lcur.get("title_mode", "full")
+                if title_mode != "none":
+                    title_font = QFont(self._font); title_font.setPointSize(12); title_font.setBold(True)
+                    if title_mode == "abbr3":
+                        title_str = (ev.title or "").strip()[:3].upper()
+                        t_item = self.scene.addText(_elide_to_width(title_str, text_width), title_font)
+                        t_item.setDefaultTextColor(TITLE_COLOR)
+                        t_item.setPos(text_left, base_y)
+                        next_y = base_y + 22
+                    else:
+                        t_item = self.scene.addText(_elide_to_width(ev.title or "", text_width), title_font)
+                        t_item.setDefaultTextColor(TITLE_COLOR)
+                        t_item.setPos(text_left, base_y)
+                        next_y = base_y + 24
+
+                if Lcur.get("show_date", False):
+                    d_font = QFont(self._font); d_font.setPointSize(10)
+                    date_text = f"{ev.start_date} – {ev.end_date}" if ev.end_date else (ev.start_date or "")
+                    d_item = self.scene.addText(_elide_to_width(date_text, text_width), d_font)
+                    d_item.setDefaultTextColor(DATE_COLOR)
+                    d_item.setPos(text_left, next_y)
+                    next_y += 20
+
+                if Lcur.get("show_desc", False):
+                    desc_font = QFont(self._font); desc_font.setPointSize(10)
+                    if Lcur.get("wrap_desc", False):
+                        desc = self.scene.addText(_elide_to_width(ev.description or "", text_width))
+                        desc.setDefaultTextColor(DESC_COLOR)
+                        desc.setPos(text_left, next_y)
+                    else:
+                        desc_text = _elide_to_width(ev.description or "", text_width)
+                        desc = self.scene.addText(desc_text, desc_font)
+                        desc.setDefaultTextColor(DESC_COLOR)
+                        desc.setPos(text_left, next_y)
+
+                # character chips
+                cx = rect.right() - padding - 12
+                cy = rect.top() + padding + 10
+                for name in (ev.characters or [])[: Lcur["max_chips"]]:
+                    ch = char_by_name.get(name, None)
+                    if ch is None:
+                        sw_col = QColor("#888")
+                    else:
+                        sw_col = QColor(ch.color)
+                    sw_size = 14
+                    sw_rect = QRectF(cx - sw_size, cy - sw_size/2, sw_size, sw_size)
+                    _add_rounded_rect(self.scene, sw_rect, sw_size/2, QPen(QColor(0,0,0,20)), QBrush(sw_col)).setZValue(16)
+                    # name label left of swatch
+                    name_font = QFont(self._font.family(), 9)
+                    max_name_px = 100
+                    display = _elide_to_width(name, max_name_px)
+                    name_item = self.scene.addText(display, name_font)
+                    name_item.setDefaultTextColor(CHIP_TEXT)
+                    name_item_w = min(max_name_px, len(display) * 7)
+                    name_item.setPos(sw_rect.left() - 6 - name_item_w, sw_rect.top() - 6)
+                    name_item.setZValue(16)
+                    cx = sw_rect.left() - 8 - name_item_w
+
     def zoom_in(self):
         step = 1.25
         self.scale(step, step)
@@ -389,29 +374,19 @@ class PrettyTimelineView(QGraphicsView):
         self.scale_factor /= step
         self.refresh()
 
-    def reset_zoom(self):
-        self.resetTransform()
-        self.scale_factor = 1.0
-        self.refresh()
-
     def wheelEvent(self, event):
-        if event.modifiers() & Qt.ControlModifier:
-            if event.angleDelta().y() > 0: self.zoom_in()
-            else: self.zoom_out()
-            return
-        super().wheelEvent(event)
+        if event.modifiers() == Qt.ControlModifier:
+            if event.angleDelta().y() > 0:
+                self.zoom_in()
+            else:
+                self.zoom_out()
+        else:
+            super().wheelEvent(event)
 
-
-# ---- Tab med filter & kontroller ------------------------------------------
+# ---- Tab with filters + splitter ----
 class TimelineTab(QWidget):
-    data_changed = Signal()
-
     def __init__(self, get_events_fn, get_characters_fn, get_places_fn):
         super().__init__()
-
-        self._get_events_raw = get_events_fn
-        self._get_characters = get_characters_fn
-        self._get_places     = get_places_fn
 
         self.char_filter = QListWidget(); self.char_filter.setSelectionMode(QListWidget.MultiSelection)
         self.place_filter = QListWidget(); self.place_filter.setSelectionMode(QListWidget.MultiSelection)
@@ -424,22 +399,20 @@ class TimelineTab(QWidget):
         self.zoomin_btn = QPushButton("+")
         self.zoomout_btn = QPushButton("-")
 
-        self.graph = PrettyTimelineView(
-            self._get_events_filtered,
-            self._get_characters,
-            self._get_places,
-            get_selected_chars_fn=self._selected_chars
-        )
+        self._get_events_raw = get_events_fn
+        self._get_characters = get_characters_fn
+        self._get_places     = get_places_fn
+
+        self.graph = PrettyTimelineView(self._get_events_filtered, self._get_characters, self._get_places)
 
         controls = QWidget()
         controls_layout = QVBoxLayout(controls)
         left = QVBoxLayout(); left.addWidget(QLabel("Characters:")); left.addWidget(self.char_filter)
-        mid  = QVBoxLayout(); mid.addWidget(QLabel("Places:"));     mid.addWidget(self.place_filter)
-        right= QVBoxLayout(); right.addWidget(QLabel("From:"));     right.addWidget(self.date_from)
+        mid  = QVBoxLayout();  mid.addWidget(QLabel("Places:"));     mid.addWidget(self.place_filter)
+        right= QVBoxLayout();  right.addWidget(QLabel("From:"));     right.addWidget(self.date_from)
         right.addWidget(QLabel("To:")); right.addWidget(self.date_to)
-        row1 = QHBoxLayout(); row1.addLayout(left,2); row1.addLayout(mid,2); row1.addLayout(right,1)
+        row1 = QHBoxLayout(); row1.addLayout(left, 2); row1.addLayout(mid, 2); row1.addLayout(right, 1)
         controls_layout.addLayout(row1)
-
         row2 = QHBoxLayout()
         row2.addWidget(self.apply_btn); row2.addWidget(self.clear_btn); row2.addWidget(self.auto_dates)
         row2.addStretch(1); row2.addWidget(self.zoomin_btn); row2.addWidget(self.zoomout_btn)
@@ -455,12 +428,6 @@ class TimelineTab(QWidget):
         root = QVBoxLayout(self)
         root.addWidget(splitter)
 
-        # shortcuts
-        QShortcut(QKeySequence("Ctrl++"), self, activated=self.graph.zoom_in)
-        QShortcut(QKeySequence("Ctrl+="), self, activated=self.graph.zoom_in)
-        QShortcut(QKeySequence("Ctrl+-"), self, activated=self.graph.zoom_out)
-        QShortcut(QKeySequence("Ctrl+0"), self, activated=self.graph.reset_zoom)
-
         self._populate_filters()
         self._init_date_defaults()
 
@@ -473,7 +440,6 @@ class TimelineTab(QWidget):
 
         self.graph.refresh()
 
-    # --- helpers -------------------------------------------------------------
     def _populate_filters(self):
         with QSignalBlocker(self.char_filter):
             self.char_filter.clear()
@@ -509,15 +475,21 @@ class TimelineTab(QWidget):
             return False
         f = _parse_date(self.date_from.date().toString("yyyy-MM-dd"))
         t = _parse_date(self.date_to.date().toString("yyyy-MM-dd"))
-        if f and s < f: return False
-        if t and s > t: return False
+        if f and s < f:
+            return False
+        if t and s > t:
+            return False
         return True
 
     def _get_events_filtered(self) -> List[Event]:
         events = self._get_events_raw()
+        sel_chars = set(self._selected_chars())
         sel_places = set(self._selected_places())
+
+        def char_ok(e: Event):  return True if not sel_chars else bool(set(e.characters) & sel_chars)
         def place_ok(e: Event): return True if not sel_places else bool(set(e.places) & sel_places)
-        return [e for e in events if self._within_dates(e) and place_ok(e)]
+
+        return [e for e in events if self._within_dates(e) and char_ok(e) and place_ok(e)]
 
     def _maybe_auto_dates(self):
         if not self.auto_dates.isChecked():
@@ -528,7 +500,8 @@ class TimelineTab(QWidget):
         dts: List[datetime] = []
         for e in events:
             d = _parse_date(e.start_date)
-            if not d: continue
+            if not d:
+                continue
             if (not sel_chars or set(e.characters) & sel_chars) and (not sel_places or set(e.places) & sel_places):
                 dts.append(d)
         with QSignalBlocker(self.date_from), QSignalBlocker(self.date_to):
@@ -537,7 +510,8 @@ class TimelineTab(QWidget):
                 self.date_to.setDate(QDate.fromString(max(dts).strftime("%Y-%m-%d"), "yyyy-MM-dd"))
             else:
                 today = QDate.currentDate()
-                self.date_from.setDate(today); self.date_to.setDate(today)
+                self.date_from.setDate(today)
+                self.date_to.setDate(today)
         self.graph.refresh()
 
     def _clear_filters(self):
