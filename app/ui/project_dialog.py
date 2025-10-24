@@ -77,3 +77,4 @@ class ProjectDialog(QDialog):
                 self._reload()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Couldn't delete project:\n{e}")
+
