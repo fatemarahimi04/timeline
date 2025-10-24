@@ -1,5 +1,3 @@
-# Simplified, stable timeline view (no draggable items) — safe to replace your current file so the app starts.
-# This version renders places, date ticks and event cards as static items. Zoom, shortcuts, highlight/dim remain.
 from __future__ import annotations
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
@@ -14,7 +12,6 @@ from PySide6.QtCore import Qt, QRectF, QDate, QSignalBlocker, QSize, Signal
 
 from ..models import Event, Character, Place
 
-# ---- layout / styling ----
 ROW_H = 100
 LEFT_MARGIN = 180
 TOP_MARGIN = 100
@@ -118,7 +115,6 @@ class PrettyTimelineView(QGraphicsView):
             return {"tick_days": 3, "date_fmt": "%Y-%m-%d", "thumb": 68, "title_mode": "full", "show_date": True, "show_desc": True, "max_chips": 4, "event_w": 320, "event_h": 108}
 
     def refresh(self):
-        # Clear and redraw everything (simple, robust)
         self.scene.clear()
         events: List[Event] = self.get_events_fn()
         characters: List[Character] = self.get_characters_fn()
@@ -127,7 +123,6 @@ class PrettyTimelineView(QGraphicsView):
         L = self._lod()
         char_by_name: Dict[str, Character] = {c.name: c for c in characters}
 
-        # build date list
         dates = []
         for e in events:
             s = _parse_date(getattr(e, "start_date", "") or "")
@@ -149,7 +144,6 @@ class PrettyTimelineView(QGraphicsView):
             return
 
         dmin, dmax = min(dates), max(dates)
-        # padding
         dmin = dmin - timedelta(days=1)
         dmax = dmax + timedelta(days=1)
 
@@ -165,11 +159,9 @@ class PrettyTimelineView(QGraphicsView):
         scene_h = max(content_h + 40, vp_h)
         self.scene.setSceneRect(0, 0, scene_w, scene_h)
 
-        # panel
         panel_rect = QRectF(20, 20, scene_w - 40, scene_h - 40)
         _add_rounded_rect(self.scene, panel_rect, 12, QPen(PANEL_BORDER), QBrush(PANEL_COLOR))
 
-        # today marker (if within range)
         today_dt = datetime.today().date()
         if dmin.date() <= today_dt <= dmax.date():
             x_today = x_for(datetime(today_dt.year, today_dt.month, today_dt.day))
@@ -178,7 +170,6 @@ class PrettyTimelineView(QGraphicsView):
             t.setDefaultTextColor(QColor(200, 60, 60))
             t.setPos(x_today + 6, TOP_MARGIN - 70)
 
-        # places rows
         for i, p in enumerate(places):
             y = TOP_MARGIN + i * ROW_H
             line_y = y + ROW_H / 2
@@ -205,7 +196,6 @@ class PrettyTimelineView(QGraphicsView):
             name_item.setDefaultTextColor(Qt.black)
             name_item.setPos(name_x, pill_rect.top() + (pill_rect.height() - 14) / 2)
 
-        # ticks
         tick = dmin - timedelta(days=(dmin.weekday() % 7))
         while tick <= dmax:
             x = x_for(tick)
@@ -216,13 +206,10 @@ class PrettyTimelineView(QGraphicsView):
                 txt.setPos(x - 35, TOP_MARGIN - 55)
             tick += timedelta(days=L["tick_days"])
 
-        # selected characters for highlight/dim
         selected_chars = set(self.get_selected_chars_fn() or []) if self.get_selected_chars_fn else set()
 
-        # simple stacking per (place, day) to reduce overlaps
         stack_map: Dict[tuple, int] = {}
 
-        # events (static cards)
         for ev in events:
             sdt = _parse_date(getattr(ev, "start_date", "") or "")
             edt = _parse_date(getattr(ev, "end_date", "") or "") or sdt
@@ -233,7 +220,6 @@ class PrettyTimelineView(QGraphicsView):
 
             x = x_for(sdt)
 
-            # draw card per place
             for place_name in getattr(ev, "places", []) or [""]:
                 row_idx = next((i for i, pl in enumerate(places) if pl.name == place_name), None)
                 if row_idx is None:
@@ -245,7 +231,6 @@ class PrettyTimelineView(QGraphicsView):
                 x_start = x_for(sdt)
                 x_end   = x_for(edt) if edt else x_start
 
-                # duration band (behind card) when multi-day
                 if edt and edt > sdt:
                     band_left  = max(LEFT_MARGIN + 6, x_start)
                     band_right = max(band_left, x_end)
@@ -253,27 +238,23 @@ class PrettyTimelineView(QGraphicsView):
                     self.scene.addRect(band_rect, QPen(Qt.NoPen), QBrush(QColor(60, 100, 160, 80)))
 
                 min_left   = LEFT_MARGIN + 6
-                min_width  = Lcur["event_w"]              # visual minimum so kortet inte blir pyttelitet
+                min_width  = Lcur["event_w"]
                 rect_left  = max(min_left, x_start)
 
                 if edt and edt > sdt:
-                    # span across the whole period, but never smaller än min_width
                     span_w = max(min_width, (x_end - rect_left))
                     rect_w = span_w
                 else:
-                    # single-day: fixed min width starting at the date
                     rect_w = min_width
 
                 rect_h   = Lcur["event_h"]
                 rect     = QRectF(rect_left, y_center - rect_h/2, rect_w, rect_h)
-                # stack offset if this day/place is already used
                 day_slot = (row_idx, sdt.date())
                 idx = stack_map.get(day_slot, 0)
                 if idx:
-                    rect.translate(0, (-1)**idx * (min(idx, 3) * 16))  # up/down alternating
+                    rect.translate(0, (-1)**idx * (min(idx, 3) * 16))
                 stack_map[day_slot] = idx + 1
 
-                # shadow + card
                 shadow = QRectF(rect); shadow.translate(0, 4)
                 _add_rounded_rect(self.scene, shadow, EVENT_RADIUS, QPen(Qt.NoPen), QBrush(SHADOW_COLOR))
 
@@ -283,7 +264,6 @@ class PrettyTimelineView(QGraphicsView):
                         base_col = QColor(char_by_name.get(ev.characters[0], Character(name="", color="#9aa")).color)
                     except Exception:
                         base_col = QColor("#9aa")
-                    # dim if selection exists and this event doesn't include any selected char
                     bg = QColor(base_col); bg.setAlpha(200 if (not selected_chars or has_sel) else 90)
                     border = QColor(base_col.darker(140)) if (not selected_chars or has_sel) else QColor(180,180,185)
                 else:
@@ -292,7 +272,6 @@ class PrettyTimelineView(QGraphicsView):
 
                 _add_rounded_rect(self.scene, rect, EVENT_RADIUS, QPen(border, 1.6), QBrush(bg))
 
-                # content area (reserve right chip zone)
                 padding   = EVENT_PADDING
                 chip_zone = min(int(rect.width() * 0.35), 140)
                 text_left = rect.left() + padding
@@ -302,7 +281,6 @@ class PrettyTimelineView(QGraphicsView):
                 base_y   = rect.top() + 10
                 next_y   = base_y
 
-                # optional thumbnail (left)
                 thumb_path = _first_existing_image(getattr(ev, "images", []))
                 if thumb_path and L.get("thumb", 0) > 0:
                     frame = QRectF(rect.left() + padding, rect.top() + (L["event_h"] - L["thumb"]) / 2, L["thumb"], L["thumb"])
@@ -316,14 +294,12 @@ class PrettyTimelineView(QGraphicsView):
                     text_left = frame.right() + 10
                     text_width = max(10, int(text_right - text_left))
 
-                # title
                 title_font = QFont(self._font); title_font.setPointSize(12); title_font.setBold(True)
                 t_item = self.scene.addText(_elide(ev.title or "", 40), title_font)
                 t_item.setDefaultTextColor(TITLE_COLOR)
                 t_item.setPos(text_left, next_y)
                 next_y += 22
 
-                # date
                 if Lcur.get("show_date", False):
                     date_font = QFont(self._font); date_font.setPointSize(10)
                     date_text = f"{ev.start_date} – {ev.end_date}" if ev.end_date else (ev.start_date or "")
@@ -332,7 +308,6 @@ class PrettyTimelineView(QGraphicsView):
                     d_item.setPos(text_left, next_y)
                     next_y += 18
 
-                # description
                 if Lcur.get("show_desc", False):
                     desc_font = QFont(self._font); desc_font.setPointSize(10)
                     desc_item = self.scene.addText(_elide(ev.description or "", 120), desc_font)
@@ -340,7 +315,6 @@ class PrettyTimelineView(QGraphicsView):
                     desc_item.setPos(text_left, next_y)
                     next_y += 18
 
-                # chips (compact swatches) on right
                 cx = rect.right() - padding - DEFAULT_CHAR_AVATAR
                 cy = rect.top() + 10
                 for name in (ev.characters or [])[:Lcur.get("max_chips", 3)]:
@@ -352,12 +326,11 @@ class PrettyTimelineView(QGraphicsView):
                         except Exception:
                             pass
                     if selected_chars and name not in selected_chars:
-                        col = QColor(150,150,155)  # dim non-selected
+                        col = QColor(150,150,155)
                     circ = self.scene.addEllipse(cx - DEFAULT_CHAR_AVATAR, cy, DEFAULT_CHAR_AVATAR, DEFAULT_CHAR_AVATAR, QPen(Qt.NoPen), QBrush(col))
                     circ.setZValue(40)
                     cx -= (DEFAULT_CHAR_AVATAR + AVATAR_SPACING)
 
-    # zoom helpers
     def zoom_in(self):
         step = 1.25
         self.scale(step, step)
@@ -376,7 +349,6 @@ class PrettyTimelineView(QGraphicsView):
         self.refresh()
 
     def wheelEvent(self, event):
-        # Ctrl + wheel zooms
         if event.modifiers() & Qt.ControlModifier:
             if event.angleDelta().y() > 0:
                 self.zoom_in()
@@ -407,7 +379,6 @@ class TimelineTab(QWidget):
         self.zoomin_btn = QPushButton("+")
         self.zoomout_btn = QPushButton("-")
 
-        # pass selected chars fn so view can highlight/dim instead of filtering them out
         self.graph = PrettyTimelineView(
             self._get_events_filtered,
             self._get_characters,
@@ -439,7 +410,6 @@ class TimelineTab(QWidget):
         root = QVBoxLayout(self)
         root.addWidget(splitter)
 
-        # shortcuts for zoom
         QShortcut(QKeySequence("Ctrl++"), self, activated=self.graph.zoom_in)
         QShortcut(QKeySequence("Ctrl+="), self, activated=self.graph.zoom_in)
         QShortcut(QKeySequence("Ctrl+-"), self, activated=self.graph.zoom_out)
@@ -455,7 +425,6 @@ class TimelineTab(QWidget):
         self.char_filter.itemSelectionChanged.connect(self._maybe_auto_dates)
         self.place_filter.itemSelectionChanged.connect(self._maybe_auto_dates)
 
-        # initial draw
         self.graph.refresh()
 
     def _populate_filters(self):

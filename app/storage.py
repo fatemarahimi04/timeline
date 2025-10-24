@@ -9,7 +9,7 @@ CURRENT_FILE = ROOT_DIR / ".current_project"
 
 DEFAULT_CHARACTER = {
     "description": "",
-    "color": "#F8C8DC",
+    "color": "",
     "texts": [],
     "images": [],
 }

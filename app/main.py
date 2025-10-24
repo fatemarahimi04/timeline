@@ -50,71 +50,55 @@ class MainWindow(QWidget):
 
         print(f"Characters: {len(characters)}, Places: {len(places)}, Events: {len(events)}")
 
-        # Create tabs
         self.chars_tab = CharactersTab(characters)
         self.places_tab = PlacesTab(places)
         self.events_tab = EventsTab(events, characters=characters, places=places)
 
-        # Timeline expects callables that return up-to-date lists
         self.timeline_tab = TimelineTab(
             self.events_tab.values,
             self.chars_tab.values,
             self.places_tab.values
         )
 
-        # Wire up signals
-        # Keep connections minimal and idempotent (avoid duplicate connections)
         try:
-            # When characters change, update events' character lists and refresh timeline
             self.chars_tab.data_changed.connect(self._update_events_characters)
             self.chars_tab.data_changed.connect(self._save_now)
 
-            # When places change, update events' place lists and refresh timeline
             self.places_tab.data_changed.connect(self._update_events_places)
             self.places_tab.data_changed.connect(self._save_now)
 
-            # When events change, refresh timeline and save
             self.events_tab.data_changed.connect(self.timeline_tab.refresh)
             self.events_tab.data_changed.connect(self._save_now)
 
-            # Timeline can emit data_changed (e.g. when interaction modifies placement)
-            # Connect it to save. Use hasattr to be defensive if timeline implementation changes.
             if hasattr(self.timeline_tab, "data_changed"):
                 try:
                     self.timeline_tab.data_changed.connect(self._save_now)
                 except Exception:
-                    # If the timeline signal signature changed, ignore and proceed
                     pass
 
         except Exception as e:
-            # If wiring fails, show message but continue (so UI still opens)
             import traceback
             traceback.print_exc()
             QMessageBox.warning(self, "Signal wiring failed", f"Could not wire signals:\n{e}")
 
-        # Add tabs to UI
         self.tabs.addTab(self.chars_tab, "Characters")
         self.tabs.addTab(self.places_tab, "Places")
         self.tabs.addTab(self.events_tab, "Events")
         self.tabs.addTab(self.timeline_tab, "Timeline")
 
-        # Ensure timeline reflects current state
         try:
             self.timeline_tab.refresh()
         except Exception:
-            # fallback: ignore refresh errors to avoid crash during startup
             pass
 
         print("🟢 _load_state_into_ui done")
 
     def _update_events_characters(self):
-        # keep events' character lists in sync with characters tab
         try:
             self.events_tab.set_characters([c.name for c in self.chars_tab.values()])
             self.timeline_tab.refresh()
             self._save_now()
         except Exception:
-            # don't crash UI; log instead
             import traceback
             traceback.print_exc()
 
@@ -139,7 +123,6 @@ class MainWindow(QWidget):
             QMessageBox.critical(self, "Save failed", f"Could not save data: {e}")
 
     def closeEvent(self, event):
-        # save on close
         self._save_now()
         event.accept()
 
