@@ -22,6 +22,15 @@
       "images": [
         "pictures\\0.jpg"
       ]
+    },
+    {
+      "name": "lily",
+      "description": "",
+      "color": "#40E0D0",
+      "texts": [],
+      "images": [
+        "pictures\\Screenshot 2025-10-07 162118.png"
+      ]
     }
   ],
   "places": [
@@ -38,6 +47,14 @@
       "description": "där jag vilar",
       "texts": [],
       "images": []
+    },
+    {
+      "name": "valby",
+      "description": "hos lily",
+      "texts": [],
+      "images": [
+        "pictures\\Screenshot 2025-10-07 162118.png"
+      ]
     }
   ],
   "events": [
@@ -68,6 +85,23 @@
       ],
       "places": [
         "hemma"
+      ]
+    },
+    {
+      "title": "åka hem",
+      "description": "jag ska åka till lily och de på helgen ",
+      "start_date": "2025-10-30",
+      "end_date": "2025-11-02",
+      "images": [
+        "pictures\\0.jpg"
+      ],
+      "characters": [
+        "fatema",
+        "lily"
+      ],
+      "places": [
+        "hemma",
+        "valby"
       ]
     }
   ]

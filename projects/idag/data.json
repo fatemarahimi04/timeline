@@ -75,14 +75,13 @@
     {
       "title": "demo",
       "description": "babababa",
-      "start_date": "2025-10-20",
+      "start_date": "2025-10-23",
       "end_date": "2025-10-24",
       "images": [
         "pictures\\Screenshot 2025-10-07 162118.png"
       ],
       "characters": [
         "mikael",
-        "jag",
         "tjejerna",
         "publike"
       ],
@@ -95,14 +94,16 @@
     {
       "title": "helg",
       "description": "imorgon börjar helgen",
-      "start_date": "2025-10-25",
+      "start_date": "2025-10-19",
       "end_date": "2025-10-26",
       "images": [
         "pictures\\0.jpg"
       ],
       "characters": [
         "jag",
-        "tjejerna"
+        "tjejerna",
+        "mikael",
+        "publike"
       ],
       "places": [
         "hemma"

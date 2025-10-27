@@ -1,14 +1,15 @@
 from __future__ import annotations
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Callable
 from datetime import datetime, timedelta
 import os
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QGraphicsView, QGraphicsScene, QHBoxLayout, QPushButton,
-    QListWidget, QListWidgetItem, QLabel, QDateEdit, QCheckBox, QSplitter
+    QListWidget, QListWidgetItem, QLabel, QDateEdit, QCheckBox, QSplitter,
+    QGraphicsEllipseItem, QGraphicsTextItem, QMenu, QDialog, QDialogButtonBox, QMessageBox
 )
 from PySide6.QtGui import QColor, QPen, QBrush, QFont, QPixmap, QPainterPath, QPainter, QShortcut, QKeySequence
-from PySide6.QtCore import Qt, QRectF, QDate, QSignalBlocker, QSize, Signal
+from PySide6.QtCore import Qt, QRectF, QDate, QSignalBlocker, QSize, Signal, QPointF
 
 from ..models import Event, Character, Place
 
@@ -78,17 +79,51 @@ def _first_existing_image(paths: List[str]) -> Optional[str]:
     return None
 
 
+class ClickableEllipseItem(QGraphicsEllipseItem):
+    """
+    Small clickable ellipse used as an 'info' button inside an event card.
+    On click it calls callback(ev_index, scene_pos: QPointF).
+    """
+    def __init__(self, rect: QRectF, ev_index: int, callback: Callable[[int, QPointF], None]):
+        super().__init__(rect)
+        self.ev_index = ev_index
+        self.callback = callback
+        self.setAcceptHoverEvents(True)
+        self.setCursor(Qt.PointingHandCursor)
+        # Make sure it is drawn above other items by leaving z-value to default high later when added.
+
+    def mousePressEvent(self, event):
+        try:
+            if callable(self.callback):
+                self.callback(self.ev_index, self.scenePos())
+        finally:
+            super().mousePressEvent(event)
+
+
 class PrettyTimelineView(QGraphicsView):
     """
     Non-interactive timeline renderer. Call refresh() to re-draw.
     Provides zoom_in/zoom_out/reset_zoom for TimelineTab controls.
+
+    Added: small clickable 'info' icon on each event (bottom-left).
+    When clicked, a menu allows editing characters, places or dates.
+    After edit the provided on_event_edited() callback is called (if any) to allow saving.
     """
-    def __init__(self, get_events_fn, get_characters_fn, get_places_fn, get_selected_chars_fn=None, parent=None):
+    def __init__(
+        self,
+        get_events_fn,
+        get_characters_fn,
+        get_places_fn,
+        get_selected_chars_fn=None,
+        on_event_edited: Optional[Callable[[], None]] = None,
+        parent=None
+    ):
         super().__init__(parent)
         self.get_events_fn = get_events_fn
         self.get_characters_fn = get_characters_fn
         self.get_places_fn = get_places_fn
         self.get_selected_chars_fn = get_selected_chars_fn
+        self.on_event_edited = on_event_edited
 
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
@@ -210,7 +245,8 @@ class PrettyTimelineView(QGraphicsView):
 
         stack_map: Dict[tuple, int] = {}
 
-        for ev in events:
+        # Iterate with index so we can identify events when icon clicked
+        for ev_idx, ev in enumerate(events):
             sdt = _parse_date(getattr(ev, "start_date", "") or "")
             edt = _parse_date(getattr(ev, "end_date", "") or "") or sdt
             if not sdt:
@@ -331,6 +367,173 @@ class PrettyTimelineView(QGraphicsView):
                     circ.setZValue(40)
                     cx -= (DEFAULT_CHAR_AVATAR + AVATAR_SPACING)
 
+                # Add small info icon (ellipse with "i") bottom-left inside the rect
+                info_size = 16
+                info_x = rect.left() + 8
+                info_y = rect.bottom() - info_size - 8
+                info_rect = QRectF(info_x, info_y, info_size, info_size)
+                info_item = ClickableEllipseItem(info_rect, ev_idx, self._on_info_clicked)
+                info_item.setZValue(80)
+                info_item.setBrush(QBrush(QColor(255, 255, 255, 220)))
+                info_item.setPen(QPen(QColor(120, 120, 130), 1.0))
+                self.scene.addItem(info_item)
+                # Add small "i" text centered
+                i_text = QGraphicsTextItem("i")
+                font_i = QFont(self._font)
+                font_i.setPointSize(10)
+                font_i.setBold(True)
+                i_text.setFont(font_i)
+                i_text.setDefaultTextColor(QColor(80, 80, 90))
+                # Position the text inside the ellipse
+                i_text.setPos(info_x + 4, info_y - 1)
+                i_text.setZValue(81)
+                self.scene.addItem(i_text)
+
+    def _on_info_clicked(self, ev_index: int, scene_pos: QPointF):
+        """
+        Called when the small info icon on an event is clicked.
+        Shows a menu with choices to edit characters, places or dates.
+        """
+        # Map scene position to global coordinates for menu placement
+        view_pos = self.mapFromScene(scene_pos)
+        # view_pos can be either QPoint or QPointF depending on PySide / types.
+        # Convert safely to a QPoint for mapToGlobal.
+        if hasattr(view_pos, "toPoint"):
+            global_pos = self.mapToGlobal(view_pos.toPoint())
+        else:
+            global_pos = self.mapToGlobal(view_pos)
+
+        menu = QMenu()
+        act_chars = menu.addAction("Edit characters")
+        act_places = menu.addAction("Edit places")
+        act_dates = menu.addAction("Edit dates")
+        chosen = menu.exec(global_pos)
+        if chosen is None:
+            return
+
+        if chosen == act_chars:
+            self._edit_characters(ev_index)
+        elif chosen == act_places:
+            self._edit_places(ev_index)
+        elif chosen == act_dates:
+            self._edit_dates(ev_index)
+
+    def _edit_characters(self, ev_index: int):
+        events = self.get_events_fn()
+        if ev_index < 0 or ev_index >= len(events):
+            return
+        ev = events[ev_index]
+
+        dlg = QDialog(self.window())
+        dlg.setWindowTitle(f"Edit characters — {ev.title}")
+        layout = QVBoxLayout(dlg)
+        listw = QListWidget()
+        listw.setSelectionMode(QListWidget.MultiSelection)
+        chars = [c.name for c in self.get_characters_fn()]
+        for name in chars:
+            item = QListWidgetItem(name)
+            listw.addItem(item)
+            if name in (ev.characters or []):
+                item.setSelected(True)
+        layout.addWidget(QLabel("Select characters:"))
+        layout.addWidget(listw)
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        layout.addWidget(btns)
+        if dlg.exec() == QDialog.Accepted:
+            ev.characters = [i.text() for i in listw.selectedItems()]
+            # refresh and notify
+            self.refresh()
+            if callable(self.on_event_edited):
+                try:
+                    self.on_event_edited()
+                except Exception:
+                    pass
+
+    def _edit_places(self, ev_index: int):
+        events = self.get_events_fn()
+        if ev_index < 0 or ev_index >= len(events):
+            return
+        ev = events[ev_index]
+
+        dlg = QDialog(self.window())
+        dlg.setWindowTitle(f"Edit places — {ev.title}")
+        layout = QVBoxLayout(dlg)
+        listw = QListWidget()
+        listw.setSelectionMode(QListWidget.MultiSelection)
+        places = [p.name for p in self.get_places_fn()]
+        for name in places:
+            item = QListWidgetItem(name)
+            listw.addItem(item)
+            if name in (ev.places or []):
+                item.setSelected(True)
+        layout.addWidget(QLabel("Select places:"))
+        layout.addWidget(listw)
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        layout.addWidget(btns)
+        if dlg.exec() == QDialog.Accepted:
+            ev.places = [i.text() for i in listw.selectedItems()]
+            self.refresh()
+            if callable(self.on_event_edited):
+                try:
+                    self.on_event_edited()
+                except Exception:
+                    pass
+
+    def _edit_dates(self, ev_index: int):
+        events = self.get_events_fn()
+        if ev_index < 0 or ev_index >= len(events):
+            return
+        ev = events[ev_index]
+
+        dlg = QDialog(self.window())
+        dlg.setWindowTitle(f"Edit dates — {ev.title}")
+        layout = QVBoxLayout(dlg)
+        start_edit = QDateEdit(); start_edit.setCalendarPopup(True); start_edit.setDisplayFormat("yyyy-MM-dd")
+        end_edit = QDateEdit(); end_edit.setCalendarPopup(True); end_edit.setDisplayFormat("yyyy-MM-dd")
+        today = QDate.currentDate()
+        if ev.start_date:
+            d = _parse_date(ev.start_date)
+            if d:
+                start_edit.setDate(QDate.fromString(d.strftime("%Y-%m-%d"), "yyyy-MM-dd"))
+            else:
+                start_edit.setDate(today)
+        else:
+            start_edit.setDate(today)
+        if ev.end_date:
+            d2 = _parse_date(ev.end_date)
+            if d2:
+                end_edit.setDate(QDate.fromString(d2.strftime("%Y-%m-%d"), "yyyy-MM-dd"))
+            else:
+                end_edit.setDate(start_edit.date())
+        else:
+            end_edit.setDate(start_edit.date())
+
+        layout.addWidget(QLabel("Start date:")); layout.addWidget(start_edit)
+        layout.addWidget(QLabel("End date:")); layout.addWidget(end_edit)
+
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(dlg.accept); btns.rejected.connect(dlg.reject)
+        layout.addWidget(btns)
+
+        if dlg.exec() == QDialog.Accepted:
+            s = start_edit.date()
+            t = end_edit.date()
+            if t < s:
+                QMessageBox.warning(self.window(), "Ogiltiga datum", "Slutdatum kan inte vara tidigare än startdatum.")
+                return
+            ev.start_date = s.toString("yyyy-MM-dd")
+            ev.end_date = t.toString("yyyy-MM-dd")
+            self.refresh()
+            if callable(self.on_event_edited):
+                try:
+                    self.on_event_edited()
+                except Exception:
+                    pass
+
     def zoom_in(self):
         step = 1.25
         self.scale(step, step)
@@ -379,11 +582,13 @@ class TimelineTab(QWidget):
         self.zoomin_btn = QPushButton("+")
         self.zoomout_btn = QPushButton("-")
 
+        # Pass a callback so the view can signal that an event was edited and that we should save
         self.graph = PrettyTimelineView(
             self._get_events_filtered,
             self._get_characters,
             self._get_places,
-            get_selected_chars_fn=self._selected_chars
+            get_selected_chars_fn=self._selected_chars,
+            on_event_edited=self._on_event_edited
         )
 
         controls = QWidget()
@@ -508,3 +713,18 @@ class TimelineTab(QWidget):
     def refresh(self):
         self._populate_filters()
         self.graph.refresh()
+
+    def _on_event_edited(self):
+        """
+        Called by the PrettyTimelineView when an event has been edited.
+        Emit data_changed so MainWindow (or whoever listens) can save the state.
+        Also refresh the timeline to reflect changes.
+        """
+        try:
+            # Recompute filters and redraw
+            self.refresh()
+        finally:
+            try:
+                self.data_changed.emit()
+            except Exception:
+                pass
