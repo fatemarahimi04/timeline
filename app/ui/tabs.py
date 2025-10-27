@@ -265,6 +265,18 @@ class EventForm(QDialog):
         for item in self.images_list.selectedItems():
             self.images_list.takeItem(self.images_list.row(item))
 
+    def accept(self):
+        """
+        Validate dates before accepting the dialog.
+        If end date is earlier than start date, show a warning and don't close.
+        """
+        start = self.start_date_edit.date()
+        end = self.end_date_edit.date()
+        if end < start:
+            QMessageBox.warning(self, "Ogiltiga datum", "Slutdatum kan inte vara tidigare än startdatum.")
+            return
+        super().accept()
+
     def get_result(self):
         from PySide6.QtCore import QDate
         title = self.title_edit.text().strip()
