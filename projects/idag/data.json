@@ -1,33 +1,6 @@
 {
   "characters": [
     {
-      "name": "mikael",
-      "description": "kunden",
-      "color": "#F8C8DC",
-      "texts": [],
-      "images": [
-        "pictures\\0.jpg"
-      ]
-    },
-    {
-      "name": "jag",
-      "description": "jag redovosade",
-      "color": "#A7C7E7",
-      "texts": [],
-      "images": [
-        "pictures\\0.jpg"
-      ]
-    },
-    {
-      "name": "tjejerna",
-      "description": "de va publike",
-      "color": "#BEE5B0",
-      "texts": [],
-      "images": [
-        "pictures\\0.jpg"
-      ]
-    },
-    {
       "name": "publike",
       "description": "de lyssnade på mig",
       "color": "#EF4444",
@@ -81,59 +54,11 @@
         "pictures\\Screenshot 2025-10-07 162118.png"
       ],
       "characters": [
-        "mikael",
-        "tjejerna",
         "publike"
       ],
       "places": [
         "bth",
-        "j byggnaden",
         "j1360"
-      ]
-    },
-    {
-      "title": "helg",
-      "description": "imorgon börjar helgen",
-      "start_date": "2025-10-19",
-      "end_date": "2025-10-26",
-      "images": [
-        "pictures\\0.jpg"
-      ],
-      "characters": [
-        "jag",
-        "tjejerna",
-        "mikael",
-        "publike"
-      ],
-      "places": [
-        "hemma"
-      ]
-    },
-    {
-      "title": "matte tenta",
-      "description": "det är nästa vecka",
-      "start_date": "2025-10-30",
-      "end_date": "2025-10-30",
-      "images": [],
-      "characters": [
-        "jag",
-        "tjejerna"
-      ],
-      "places": [
-        "bth"
-      ]
-    },
-    {
-      "title": "västerås",
-      "description": "jag ska även åka dit",
-      "start_date": "2025-10-30",
-      "end_date": "2025-11-03",
-      "images": [],
-      "characters": [
-        "jag"
-      ],
-      "places": [
-        "hemma"
       ]
     }
   ]

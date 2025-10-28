@@ -5,11 +5,11 @@ import os
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QGraphicsView, QGraphicsScene, QHBoxLayout, QPushButton,
-    QListWidget, QListWidgetItem, QLabel, QDateEdit, QCheckBox, QSplitter,
-    QGraphicsEllipseItem, QGraphicsTextItem, QMenu, QDialog, QDialogButtonBox, QMessageBox
+    QListWidget, QListWidgetItem, QLabel, QDateEdit, QCheckBox, QSplitter, QDialog,
+    QDialogButtonBox, QMessageBox, QMenu, QGraphicsEllipseItem, QGraphicsTextItem
 )
-from PySide6.QtGui import QColor, QPen, QBrush, QFont, QPixmap, QPainterPath, QPainter, QShortcut, QKeySequence
-from PySide6.QtCore import Qt, QRectF, QDate, QSignalBlocker, QSize, Signal, QPointF
+from PySide6.QtGui import QColor, QPen, QBrush, QFont, QPixmap, QPainterPath, QPainter, QShortcut, QKeySequence, QGuiApplication
+from PySide6.QtCore import Qt, QRectF, QDate, QSignalBlocker, QSize, Signal, QPointF, QPoint, QTimer
 
 from ..models import Event, Character, Place
 
@@ -82,7 +82,9 @@ def _first_existing_image(paths: List[str]) -> Optional[str]:
 class ClickableEllipseItem(QGraphicsEllipseItem):
     """
     Small clickable ellipse used as an 'info' button inside an event card.
-    On click it calls callback(ev_index, scene_pos: QPointF).
+    On click it schedules the callback(ev_index, scene_pos: QPointF) to run
+    via QTimer.singleShot(0, ...) so the callback runs after the event
+    handler has returned (avoids C++ object-deleted-while-in-Python errors).
     """
     def __init__(self, rect: QRectF, ev_index: int, callback: Callable[[int, QPointF], None]):
         super().__init__(rect)
@@ -90,14 +92,19 @@ class ClickableEllipseItem(QGraphicsEllipseItem):
         self.callback = callback
         self.setAcceptHoverEvents(True)
         self.setCursor(Qt.PointingHandCursor)
-        # Make sure it is drawn above other items by leaving z-value to default high later when added.
 
     def mousePressEvent(self, event):
         try:
             if callable(self.callback):
-                self.callback(self.ev_index, self.scenePos())
-        finally:
-            super().mousePressEvent(event)
+                center = self.sceneBoundingRect().center()
+                try:
+                    event.accept()
+                except Exception:
+                    pass
+                QTimer.singleShot(0, lambda ev_idx=self.ev_index, c=center: self.callback(ev_idx, c))
+        except Exception:
+            import traceback
+            traceback.print_exc()
 
 
 class PrettyTimelineView(QGraphicsView):
@@ -245,7 +252,6 @@ class PrettyTimelineView(QGraphicsView):
 
         stack_map: Dict[tuple, int] = {}
 
-        # Iterate with index so we can identify events when icon clicked
         for ev_idx, ev in enumerate(events):
             sdt = _parse_date(getattr(ev, "start_date", "") or "")
             edt = _parse_date(getattr(ev, "end_date", "") or "") or sdt
@@ -367,7 +373,6 @@ class PrettyTimelineView(QGraphicsView):
                     circ.setZValue(40)
                     cx -= (DEFAULT_CHAR_AVATAR + AVATAR_SPACING)
 
-                # Add small info icon (ellipse with "i") bottom-left inside the rect
                 info_size = 16
                 info_x = rect.left() + 8
                 info_y = rect.bottom() - info_size - 8
@@ -377,14 +382,12 @@ class PrettyTimelineView(QGraphicsView):
                 info_item.setBrush(QBrush(QColor(255, 255, 255, 220)))
                 info_item.setPen(QPen(QColor(120, 120, 130), 1.0))
                 self.scene.addItem(info_item)
-                # Add small "i" text centered
                 i_text = QGraphicsTextItem("i")
                 font_i = QFont(self._font)
                 font_i.setPointSize(10)
                 font_i.setBold(True)
                 i_text.setFont(font_i)
                 i_text.setDefaultTextColor(QColor(80, 80, 90))
-                # Position the text inside the ellipse
                 i_text.setPos(info_x + 4, info_y - 1)
                 i_text.setZValue(81)
                 self.scene.addItem(i_text)
@@ -393,20 +396,47 @@ class PrettyTimelineView(QGraphicsView):
         """
         Called when the small info icon on an event is clicked.
         Shows a menu with choices to edit characters, places or dates.
+        The menu position is clamped to the current screen's available geometry so it won't open off-screen.
         """
-        # Map scene position to global coordinates for menu placement
         view_pos = self.mapFromScene(scene_pos)
-        # view_pos can be either QPoint or QPointF depending on PySide / types.
-        # Convert safely to a QPoint for mapToGlobal.
-        if hasattr(view_pos, "toPoint"):
-            global_pos = self.mapToGlobal(view_pos.toPoint())
+
+        if isinstance(view_pos, QPointF):
+            vp = QPoint(int(view_pos.x()), int(view_pos.y()))
+        elif isinstance(view_pos, QPoint):
+            vp = view_pos
         else:
-            global_pos = self.mapToGlobal(view_pos)
+            try:
+                vp = QPoint(int(view_pos.x()), int(view_pos.y()))
+            except Exception:
+                vp = QPoint(0, 0)
+
+        global_pos = self.mapToGlobal(vp)
 
         menu = QMenu()
         act_chars = menu.addAction("Edit characters")
         act_places = menu.addAction("Edit places")
         act_dates = menu.addAction("Edit dates")
+
+        try:
+            menu_size = menu.sizeHint()
+            screen = QGuiApplication.screenAt(global_pos) if hasattr(QGuiApplication, "screenAt") else QGuiApplication.primaryScreen()
+            if screen is None:
+                screen = QGuiApplication.primaryScreen()
+            screen_geom = screen.availableGeometry()
+            px = global_pos.x()
+            py = global_pos.y()
+            if px + menu_size.width() > screen_geom.right():
+                px = max(screen_geom.left(), screen_geom.right() - menu_size.width() - 8)
+            if px < screen_geom.left():
+                px = screen_geom.left() + 8
+            if py + menu_size.height() > screen_geom.bottom():
+                py = max(screen_geom.top(), screen_geom.bottom() - menu_size.height() - 8)
+            if py < screen_geom.top():
+                py = screen_geom.top() + 8
+            global_pos = QPoint(px, py)
+        except Exception:
+            pass
+
         chosen = menu.exec(global_pos)
         if chosen is None:
             return
@@ -582,7 +612,6 @@ class TimelineTab(QWidget):
         self.zoomin_btn = QPushButton("+")
         self.zoomout_btn = QPushButton("-")
 
-        # Pass a callback so the view can signal that an event was edited and that we should save
         self.graph = PrettyTimelineView(
             self._get_events_filtered,
             self._get_characters,
@@ -721,7 +750,6 @@ class TimelineTab(QWidget):
         Also refresh the timeline to reflect changes.
         """
         try:
-            # Recompute filters and redraw
             self.refresh()
         finally:
             try:

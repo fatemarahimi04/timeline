@@ -42,7 +42,6 @@ def set_project(name: str) -> None:
     CURRENT_FILE.write_text(name, encoding="utf-8")
     _ensure_dir(get_project_dir())
     _ensure_dir(get_pictures_dir())
-    # Se till att data.json finns
     df = get_data_file()
     if not df.exists():
         df.write_text(json.dumps({"characters": [], "places": [], "events": []}, indent=2, ensure_ascii=False), encoding="utf-8")

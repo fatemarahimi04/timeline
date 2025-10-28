@@ -41,7 +41,6 @@ class MainWindow(QWidget):
         Load data into tabs and wire signals.
         This version is robust to timeline API changes and avoids duplicate signal hookups.
         """
-        print("🟢 _load_state_into_ui start")
         self.tabs.clear()
 
         characters = [Character(**c) for c in state.get("characters", [])]
@@ -91,7 +90,6 @@ class MainWindow(QWidget):
         except Exception:
             pass
 
-        print("🟢 _load_state_into_ui done")
 
     def _update_events_characters(self):
         try:

@@ -6,31 +6,6 @@
       "color": "#A7C7E7",
       "texts": [],
       "images": []
-    },
-    {
-      "name": "kompis",
-      "description": "min vän",
-      "color": "#BEE5B0",
-      "texts": [],
-      "images": []
-    },
-    {
-      "name": "fatema",
-      "description": "det är jag",
-      "color": "#F8C8DC",
-      "texts": [],
-      "images": [
-        "pictures\\0.jpg"
-      ]
-    },
-    {
-      "name": "lily",
-      "description": "",
-      "color": "#40E0D0",
-      "texts": [],
-      "images": [
-        "pictures\\Screenshot 2025-10-07 162118.png"
-      ]
     }
   ],
   "places": [
@@ -62,7 +37,7 @@
       "title": "presentation",
       "description": "det har vi idag",
       "start_date": "2025-10-24",
-      "end_date": "2025-10-24",
+      "end_date": "2025-10-26",
       "images": [
         "pictures\\Screenshot 2025-10-07 162118.png"
       ],
@@ -70,37 +45,7 @@
         "mikael"
       ],
       "places": [
-        "bth"
-      ]
-    },
-    {
-      "title": "helg",
-      "description": "snart är det helg",
-      "start_date": "2025-10-25",
-      "end_date": "2025-10-26",
-      "images": [],
-      "characters": [
-        "kompis",
-        "fatema"
-      ],
-      "places": [
-        "hemma"
-      ]
-    },
-    {
-      "title": "åka hem",
-      "description": "jag ska åka till lily och de på helgen ",
-      "start_date": "2025-10-30",
-      "end_date": "2025-11-02",
-      "images": [
-        "pictures\\0.jpg"
-      ],
-      "characters": [
-        "fatema",
-        "lily"
-      ],
-      "places": [
-        "hemma",
+        "bth",
         "valby"
       ]
     }
